@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>AI connector for Splitwise</title>
+  <title>AI connector for Spliit</title>
   <link rel="stylesheet" href="/assets/style.css">
 </head>
 <body class="owner-page">
   <header class="nav">
     <div class="nav-inner">
       <a class="brand" href="#overview" aria-label="Overview">
-        <span class="brand-name">AI connector for Splitwise</span>
+        <span class="brand-name">AI connector for Spliit</span>
       </a>
       <a id="project" class="project hidden" target="_blank" rel="noopener" title="Open this project in the Firebase console">
         <span class="project-dot" aria-hidden="true"></span><span id="project-id"></span><span aria-hidden="true">↗</span>
@@ -44,7 +44,7 @@
       <p id="signin-message" class="note" role="status">Loading…</p>
     </section>
 
-    <!-- Overview: status, the API key, and the apps that use it -->
+    <!-- Overview: status, groups, the apps that use them, and what they changed -->
     <section id="overview-view" class="view hidden" data-view="overview">
       <div id="overview-hero" class="hero" data-tone="neutral">
         <p class="status-pill"><span class="dot" aria-hidden="true"></span><span id="status-label">Checking</span></p>
@@ -56,27 +56,42 @@
         <p id="message" class="note" role="status" aria-live="polite"></p>
       </div>
 
-      <div id="key-panel" class="panel connect hidden">
-        <h2 id="key-title">Add your Splitwise API key</h2>
-        <p class="panel-note">The key lets your connector use your Splitwise account. It is checked with Splitwise, then kept in your project's Secret Manager. Your AI apps never see it.</p>
-        <ol class="steps">
-          <li>Open your Splitwise apps page and choose Register your application.
-            <a class="pill small step-link" href="https://secure.splitwise.com/apps" target="_blank" rel="noopener">Open Splitwise apps</a></li>
-          <li>Give it any name, such as My AI connector, and any homepage URL, such as this page's address. Then save it.</li>
-          <li>On the app's page, choose Create API key, and copy the key.</li>
-        </ol>
-        <form id="key-form">
-          <label>API key<input id="api-key" type="password" autocomplete="off" spellcheck="false" required minlength="20" maxlength="200"></label>
-          <button id="key-submit" class="pill wide" type="submit">Save key</button>
-          <button id="key-cancel" class="link-button hidden" type="button">Cancel</button>
+      <div id="group-panel" class="panel connect hidden">
+        <h2>Add a Spliit group</h2>
+        <p class="panel-note">Paste the group's link from Spliit (Share, or the address bar). The link is the key to the group: it is kept in your project's Secret Manager, and your AI apps never see it.</p>
+        <form id="lookup-form">
+          <label>Group link<input id="group-link" type="url" autocomplete="off" spellcheck="false" required maxlength="500" placeholder="https://spliit.app/groups/…"></label>
+          <button id="lookup-submit" class="pill wide" type="submit">Continue</button>
         </form>
+        <form id="add-form" class="hidden">
+          <fieldset class="members">
+            <legend id="members-title">Which member are you?</legend>
+            <div id="members"></div>
+          </fieldset>
+          <button id="add-submit" class="pill wide" type="submit">Add group</button>
+        </form>
+        <button id="group-cancel" class="link-button hidden" type="button">Cancel</button>
+      </div>
+
+      <div class="section-head">
+        <h2>Spliit groups</h2>
+        <div class="section-links">
+          <button id="group-add" class="link-button" type="button">Add a group</button>
+        </div>
+      </div>
+      <div class="panel">
+        <ul id="groups-list" class="rows"><li class="row muted">Loading…</li></ul>
+        <dl class="facts">
+          <div><dt>Spliit right now</dt><dd id="fact-live">—</dd></div>
+          <div><dt>Last problem</dt><dd id="fact-last-error">—</dd></div>
+        </dl>
       </div>
 
       <div class="section-head" id="apps">
         <h2>AI apps</h2>
       </div>
       <div class="panel">
-        <p class="panel-note">Add this address to an AI app. It asks you to sign in with this Google account, then reads and records expenses in your Splitwise.</p>
+        <p class="panel-note">Add this address to an AI app. It asks you to sign in with this Google account, then reads and records expenses in the groups above.</p>
         <div class="copy-field">
           <code id="mcp-url">—</code>
           <button id="copy-url" class="pill small" type="button">Copy</button>
@@ -97,19 +112,11 @@
       </div>
 
       <div class="section-head">
-        <h2>Splitwise</h2>
-        <div class="section-links">
-          <button id="key-replace" class="link-button" type="button">Replace key</button>
-          <button id="key-remove" class="link-button danger" type="button">Remove key</button>
-        </div>
+        <h2>AI changes</h2>
       </div>
       <div class="panel">
-        <dl class="facts">
-          <div><dt>Account</dt><dd id="fact-account">—</dd></div>
-          <div><dt>API key</dt><dd id="fact-key">—</dd></div>
-          <div><dt>Splitwise right now</dt><dd id="fact-live">—</dd></div>
-          <div><dt>Last problem</dt><dd id="fact-last-error">—</dd></div>
-        </dl>
+        <p class="panel-note">Every expense your AI apps added or changed, newest first, with what it was before. Changes made in Spliit itself aren't listed.</p>
+        <ul id="changes-list" class="rows"><li class="row muted">Loading…</li></ul>
       </div>
 
       <div class="section-head">
@@ -125,7 +132,7 @@
     <section id="developer-view" class="view hidden" data-view="developer">
       <div class="hero compact">
         <h1>What your AI sees.</h1>
-        <p class="lede">The exact output of your AI's read tools. Viewing it reads Splitwise and never changes anything.</p>
+        <p class="lede">The exact output of your AI's read tools, for your first group. Viewing it reads Spliit and never changes anything.</p>
       </div>
 
       <div class="panel">
@@ -133,7 +140,7 @@
         <dl class="facts">
           <div><dt>Version</dt><dd id="fact-version">—</dd></div>
           <div><dt>Source code</dt><dd id="fact-source">—</dd></div>
-          <div><dt>Splitwise status code</dt><dd id="fact-state"><code>—</code></dd></div>
+          <div><dt>Spliit status code</dt><dd id="fact-state"><code>—</code></dd></div>
         </dl>
       </div>
 
@@ -141,9 +148,8 @@
         <div class="panel-head">
           <h2>Tool output</h2>
           <div class="segmented" role="group" aria-label="Tool output">
-            <button type="button" data-preview="get_status" aria-pressed="true">get_status</button>
-            <button type="button" data-preview="list_groups" aria-pressed="false">list_groups</button>
-            <button type="button" data-preview="list_friends" aria-pressed="false">list_friends</button>
+            <button type="button" data-preview="list_groups" aria-pressed="true">list_groups</button>
+            <button type="button" data-preview="get_balances" aria-pressed="false">get_balances</button>
             <button type="button" data-preview="list_expenses" aria-pressed="false">list_expenses</button>
           </div>
         </div>
@@ -159,7 +165,7 @@
   </dialog>
 
   <footer class="footer">
-    <span>Unofficial and self-hosted. Not affiliated with Splitwise.</span>
+    <span>Unofficial and self-hosted. Not affiliated with Spliit.</span>
     <a id="source" class="hidden" target="_blank" rel="noopener">Source code on GitHub ↗</a>
   </footer>
   <script type="module" src="/assets/owner.js"></script>

@@ -1,0 +1,21 @@
+{
+  "source": "https://github.com/spliit-app/spliit/tree/d3b1e1e6787ffe13c6dfe0b6a2fcfc403d81686a",
+  "note": "Inputs of the tRPC procedures this connector calls, copied from src/trpc/routers and src/lib/schemas.ts at source. Spliit does not publish this API.",
+  "procedures": {
+    "categories.list": {"method": "GET", "input": []},
+    "groups.get": {"method": "GET", "input": ["groupId"]},
+    "groups.expenses.list": {"method": "GET", "input": ["groupId", "cursor", "limit", "filter"]},
+    "groups.expenses.get": {"method": "GET", "input": ["groupId", "expenseId"]},
+    "groups.balances.list": {"method": "GET", "input": ["groupId"]},
+    "groups.expenses.create": {"method": "POST", "input": ["groupId", "expenseFormValues", "participantId", "expenseId"]},
+    "groups.expenses.update": {"method": "POST", "input": ["expenseId", "groupId", "expenseFormValues", "participantId"]}
+  },
+  "expenseFormValues": {
+    "required": ["expenseDate", "title", "amount", "paidBy", "paidFor", "saveDefaultSplittingOptions", "isReimbursement"],
+    "optional": ["category", "originalAmount", "originalCurrency", "conversionRate", "splitMode", "documents", "notes", "recurrenceRule"],
+    "paidFor": ["participant", "originalAmount", "shares"],
+    "documents": ["id", "url", "width", "height"],
+    "splitMode": ["EVENLY", "BY_SHARES", "BY_PERCENTAGE", "BY_AMOUNT"],
+    "recurrenceRule": ["NONE", "DAILY", "WEEKLY", "MONTHLY"]
+  }
+}

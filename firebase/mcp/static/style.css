@@ -227,11 +227,13 @@ input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 4px co
 .consent .note:empty { display: none; }
 .panel-note.warning { color: var(--amber); }
 
-/* ---------- Splitwise key and status ---------- */
-.panel.connect .steps { margin: 0 0 24px; text-align: left; }
-/* A panel that is only a list of facts starts with its first row, not a rule above it. */
-.panel > .facts:first-child { margin: -12px 0; }
-.panel > .facts:first-child div:first-child { border-top: 0; }
+/* ---------- Spliit groups ---------- */
+.members { margin: 0 0 8px; padding: 0; border: 0; }
+.members legend { margin-bottom: 12px; color: var(--muted); font-size: 13px; font-weight: 500; }
+.members label { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; padding: 12px 16px; border: 1px solid var(--field-line); border-radius: 12px; color: var(--ink); font-size: 17px; cursor: pointer; }
+.members input { width: auto; margin: 0; }
+#group-cancel { margin-top: 16px; }
+.panel .rows + .facts { margin-top: 24px; }
 
 /* ---------- Small screens ---------- */
 @media (max-width: 900px) {

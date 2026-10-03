@@ -11,9 +11,9 @@ DEFAULT_REGION = "us-east4"
 # One connector per project, so these names identify its resources; changing one strands them.
 NAMES = {
     "auth_database": "(default)",
-    "api_key_secret_id": "splitwise-api-key",
-    "mcp_service_account": "splitwise-mcp",
-    "mcp_service": "splitwise-mcp",
+    "groups_secret_id": "spliit-groups",
+    "mcp_service_account": "spliit-mcp",
+    "mcp_service": "spliit-mcp",
 }
 
 
@@ -47,5 +47,5 @@ def mcp_env(cfg):
     base = f'https://{cfg["mcp_service"]}-{cfg["project_number"]}.{cfg["region"]}.run.app'
     return {"MCP_BASE_URL": base, "GOOGLE_CLOUD_PROJECT": cfg["project_id"],
             "MCP_OWNER_EMAIL": cfg["owner_email"].casefold(), "MCP_AUTH_DATABASE": cfg["auth_database"],
-            "API_KEY_SECRET_ID": cfg["api_key_secret_id"],
+            "GROUPS_SECRET_ID": cfg["groups_secret_id"],
             "FIREBASE_WEB_CONFIG": json.dumps(cfg["firebase_web_config"], separators=(",", ":"))}

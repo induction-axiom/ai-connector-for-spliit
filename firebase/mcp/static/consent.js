@@ -25,10 +25,10 @@ try {
   if (host === "oauth-redirect.googleusercontent.com") el("app-name").textContent = "Gemini";
   if (host === "chatgpt.com") el("app-name").textContent = "ChatGPT";
   if (host === "claude.ai" || host === "claude.com") el("app-name").textContent = "Claude";
-  el("description").textContent = "Your AI app is asking to connect to your own private AI connector for Splitwise.";
-  el("scope").textContent = "Read your groups, friends, balances and expenses, and add, change, delete or settle " +
-    "expenses and add comments as you. Everyone who shares an expense sees those changes. It can't see your " +
-    "Splitwise API key or change your groups, friends or profile. It stays connected while you use it; " +
+  el("description").textContent = "Your AI app is asking to connect to your own private AI connector for Spliit.";
+  el("scope").textContent = "Read the Spliit groups you added, with their members, balances and expenses, and add " +
+    "or change expenses and reimbursements as you. Everyone in the group sees those changes. It can't see your " +
+    "group links, delete expenses, or change groups and members. It stays connected while you use it; " +
     "after 3 months unused, it asks you again.";
   el("registered").textContent = view.registered_at
     ? new Intl.RelativeTimeFormat(undefined, {numeric: "auto"}).format(

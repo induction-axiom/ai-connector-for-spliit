@@ -43,7 +43,7 @@ class DeploymentTests(unittest.TestCase):
     def test_parameters_flow_to_the_service(self):
         mcp = mcp_env(self.config(region="us-central1"))
         self.assertIn("us-central1.run.app", mcp["MCP_BASE_URL"])
-        self.assertEqual(mcp["API_KEY_SECRET_ID"], "splitwise-api-key")
+        self.assertEqual(mcp["GROUPS_SECRET_ID"], "spliit-groups")
         self.assertEqual(mcp["MCP_AUTH_DATABASE"], "(default)")
         self.assertEqual(json.loads(mcp["FIREBASE_WEB_CONFIG"]), WEB)
 
@@ -66,7 +66,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertFalse(stray.exists())
         files = {str(f.relative_to(dest)) for f in dest.rglob("*")
                  if f.is_file() and "venv" not in f.parts}
-        self.assertIn("mcp/splitwise.py", files)
+        self.assertIn("mcp/spliit.py", files)
         self.assertIn("mcp/static/owner.js", files)
         self.assertFalse(any(f.startswith("functions/") for f in files))
         version = json.loads((dest / "mcp/version.json").read_text())
@@ -85,8 +85,8 @@ class DeploymentTests(unittest.TestCase):
         self.assertFalse(updating)
         self.assertEqual(cfg["region"], "us-east4")
         self.assertEqual(cfg["auth_database"], "(default)")
-        self.assertEqual(cfg["mcp_service"], "splitwise-mcp")
-        self.assertEqual(cfg["api_key_secret_id"], "splitwise-api-key")
+        self.assertEqual(cfg["mcp_service"], "spliit-mcp")
+        self.assertEqual(cfg["groups_secret_id"], "spliit-groups")
 
     def test_a_project_without_cloud_run_turned_on_is_a_first_setup(self):
         with patch("manage.run", fake_gcloud(None, apis="firestore.googleapis.com")):
@@ -101,7 +101,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(cfg["region"], "us-central1")
         self.assertEqual(deployed["firebase_web_config"], WEB)
         self.assertEqual(mcp_env(deployed)["MCP_BASE_URL"],
-                         "https://splitwise-mcp-123456.us-central1.run.app")
+                         "https://spliit-mcp-123456.us-central1.run.app")
 
     def test_update_refuses_another_owner_or_region(self):
         with patch("manage.run", fake_gcloud([service(owner="someone@example.com")])):

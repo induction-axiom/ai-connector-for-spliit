@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
-from fakes import BASE, CALLBACK, OWNER, FakeSplitwise, MemoryKey, owner_identity
+from fakes import BASE, CALLBACK, OWNER, FakeSpliit, MemoryGroups, owner_identity
 from starlette.testclient import TestClient
 from app import create_app, verify_owner, COOKIE
 from config import Config, SCOPE
@@ -20,10 +20,10 @@ class OAuthTests(unittest.TestCase):
     def setUp(self):
         self.store = MemoryStore()
         self.config = Config(BASE, "synthetic-project", OWNER["email"], {})
-        self.splitwise = FakeSplitwise()
-        self.key = MemoryKey()
-        self.app = create_app(self.config, self.store, owner_identity, self.key,
-                              self.splitwise.transport)
+        self.spliit = FakeSpliit()
+        self.groups = MemoryGroups()
+        self.app = create_app(self.config, self.store, owner_identity, self.groups,
+                              self.spliit.transport)
         self.client = TestClient(self.app, base_url=BASE, follow_redirects=False)
         self.client.__enter__()
         self.addCleanup(self.client.__exit__, None, None, None)
@@ -100,10 +100,9 @@ class OAuthTests(unittest.TestCase):
         r = self.mcp(t["access_token"])
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual({x["name"] for x in r.json()["result"]["tools"]},
-                         {"get_status", "list_groups", "list_friends", "list_expenses", "get_expense",
-                          "list_categories", "create_expense", "record_payment", "update_expense",
-                          "delete_expense", "restore_expense", "add_comment"})
-        call = self.mcp(t["access_token"], "tools/call", {"name": "get_status", "arguments": {}})
+                         {"list_groups", "get_balances", "list_expenses", "get_expense", "list_categories",
+                          "create_expense", "record_reimbursement", "update_expense"})
+        call = self.mcp(t["access_token"], "tools/call", {"name": "list_groups", "arguments": {}})
         self.assertEqual(call.status_code, 200, call.text)
         data = call.json()["result"]["structuredContent"]
         self.assertEqual(data["owner_url"], BASE + "/owner")

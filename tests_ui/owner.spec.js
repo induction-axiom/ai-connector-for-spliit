@@ -5,7 +5,7 @@ import {test, expect} from "@playwright/test";
 
 const STATIC = new URL("../firebase/mcp/static/", import.meta.url);
 const BASE = "https://owner.test";
-const KEY = "k".repeat(40);
+const LINK = "https://spliit.app/groups/secretGroupId123456789";
 
 const FIREBASE_APP = "export const initializeApp = config => ({config});";
 const FIREBASE_AUTH = `
@@ -19,21 +19,23 @@ const FIREBASE_AUTH = `
     {email: "owner@example.com", getIdToken: async () => "synthetic-owner-token"}));
 `;
 
-function status(state, apps = []) {
-  const connected = state === "connected";
+const TRIP = {name: "Trip", state: "ok", currency: "CAD", members: ["Jong", "Alex", "Sam"], me: "Jong"};
+const CLAUDE = {client_id: "c1", name: "Claude", redirect_host: "claude.ai"};
+
+function status(state) {
   return {
-    splitwise: {state, key_saved_at: state === "key_missing" ? null : 1790000000,
-      user: connected ? {first_name: "Sam", last_name: null, email: "sam@example.com"} : undefined},
+    spliit: {state: "connected", groups: state.groups},
     last_failure: null,
-    apps,
+    changes: state.changes,
+    apps: [],
     diagnostics: {connector_version: "test", repository: "example/example", project_id: "your-project",
-      api_key_secret: "splitwise-api-key", auth_database: "(default)", mcp_endpoint: BASE + "/mcp"},
+      groups_secret: "spliit-groups", auth_database: "(default)", mcp_endpoint: BASE + "/mcp"},
   };
 }
 
-// Serve the dashboard; /owner/key waits until the test settles it.
-async function openDashboard(page, initial = "key_missing") {
-  const state = {splitwise: initial, keys: [], removed: 0, errors: []};
+// Serve the dashboard; each /owner/groups/add waits until the test settles it.
+async function openDashboard(page, {groups = [], changes = []} = {}) {
+  const state = {groups, changes, adds: [], removed: [], errors: []};
   page.on("pageerror", error => state.errors.push(error.message));
   await page.route("**/*", async route => {
     const url = new URL(route.request().url());
@@ -50,19 +52,25 @@ async function openDashboard(page, initial = "key_missing") {
         body: readFileSync(new URL(name, STATIC))});
     }
     if (url.pathname === "/firebase-config") return json({authDomain: "example.test"});
-    if (url.pathname === "/owner/status") return json(status(state.splitwise));
-    if (url.pathname === "/owner/key") {
-      const {api_key} = route.request().postDataJSON();
-      return new Promise(settle => state.keys.push({api_key, reply: result => {
-        if (result === "key_saved") state.splitwise = "connected";
+    if (url.pathname === "/owner/status") return json(status(state));
+    if (url.pathname === "/owner/groups/lookup") {
+      const {link} = route.request().postDataJSON();
+      return json(link === LINK
+        ? {result: "found", name: "Trip", members: [{id: "p1", name: "Jong"}, {id: "p2", name: "Alex"}]}
+        : {result: "link_invalid"});
+    }
+    if (url.pathname === "/owner/groups/add") {
+      const body = route.request().postDataJSON();
+      return new Promise(settle => state.adds.push({body, reply: result => {
+        if (result === "group_added") state.groups = [TRIP];
         json({result});
         settle();
       }}));
     }
-    if (url.pathname === "/owner/key/remove") {
-      state.removed += 1;
-      state.splitwise = "key_missing";
-      return json({result: "key_removed"});
+    if (url.pathname === "/owner/groups/remove") {
+      state.removed.push(route.request().postDataJSON().name);
+      state.groups = [];
+      return json({result: "group_removed"});
     }
     return json({});
   });
@@ -70,75 +78,67 @@ async function openDashboard(page, initial = "key_missing") {
   return state;
 }
 
-async function nextKey(state) {
-  await expect.poll(() => state.keys.length).toBeGreaterThan(0);
-  return state.keys.shift();
-}
-
-test("a new key is checked, saved, and the page turns to connecting an AI app", async ({page}) => {
+test("a group is added from its link, choosing which member you are", async ({page}) => {
   const state = await openDashboard(page);
-  await expect(page.locator("#status-title")).toHaveText("Add your Splitwise API key.");
-  await expect(page.locator("#primary-action")).toBeHidden();
-  await expect(page.locator("#key-cancel")).toBeHidden();
-  await page.fill("#api-key", KEY);
-  await page.click("#key-submit");
-
-  const pending = await nextKey(state);
-  expect(pending.api_key).toBe(KEY);
-  await expect(page.locator("#key-submit")).toBeDisabled();
-  await expect(page.locator("#message")).toHaveText("Checking the key with Splitwise…");
-  pending.reply("key_saved");
-
-  await expect(page.locator("#message")).toHaveText("Key saved. Your AI apps can use Splitwise now.");
-  await expect(page.locator("#status-title")).toHaveText("Connect an AI app.");
-  await expect(page.locator("#key-panel")).toBeHidden();
-  await expect(page.locator("#fact-account")).toHaveText("Sam (sam@example.com)");
-  await expect(page.locator("#api-key")).toHaveValue("");
-  expect(state.errors).toEqual([]);
-});
-
-test("a rejected key keeps the form open and says why", async ({page}) => {
-  const state = await openDashboard(page, "key_rejected");
-  await expect(page.locator("#status-title")).toHaveText("Replace your Splitwise API key.");
-  await page.fill("#api-key", "w".repeat(40));
-  await page.click("#key-submit");
-  (await nextKey(state)).reply("key_rejected");
+  await expect(page.locator("#status-title")).toHaveText("Add a Spliit group.");
+  await expect(page.locator("#group-cancel")).toBeHidden();
+  await page.fill("#group-link", "https://example.com/not-a-group");
+  await page.click("#lookup-submit");
   await expect(page.locator("#message")).toHaveText(
-    "Splitwise didn't accept that key. Create a new one and try again.");
-  await expect(page.locator("#key-panel")).toBeVisible();
-  await expect(page.locator("#key-submit")).toBeEnabled();
+    "That isn't a Spliit group link. It looks like https://spliit.app/groups/…");
+
+  await page.fill("#group-link", LINK);
+  await page.click("#lookup-submit");
+  await expect(page.locator("#members-title")).toHaveText("Which member of Trip are you?");
+  await page.getByLabel("Jong").check();
+  await page.click("#add-submit");
+  await expect.poll(() => state.adds.length).toBe(1);
+  expect(state.adds[0].body).toEqual({link: LINK, me: "p1"});
+  await expect(page.locator("#add-submit")).toBeDisabled();
+  state.adds[0].reply("group_added");
+
+  await expect(page.locator("#message")).toHaveText("Group added. Your AI apps can use it now.");
+  await expect(page.locator("#status-title")).toHaveText("Connect an AI app.");
+  await expect(page.locator("#group-panel")).toBeHidden();
+  await expect(page.locator("#groups-list")).toContainText("You are Jong · CAD · 3 members");
   expect(state.errors).toEqual([]);
 });
 
-test("removing the key takes two clicks", async ({page}) => {
-  const state = await openDashboard(page, "connected");
-  await expect(page.locator("#key-panel")).toBeHidden();
-  await page.click("#key-remove");
-  await expect(page.locator("#key-remove")).toHaveText("Click again to remove");
-  expect(state.removed).toBe(0);
-  await page.click("#key-remove");
-  await expect(page.locator("#status-title")).toHaveText("Add your Splitwise API key.");
-  expect(state.removed).toBe(1);
+test("removing a group takes two clicks", async ({page}) => {
+  const state = await openDashboard(page, {groups: [TRIP]});
+  const remove = page.locator("#groups-list button");
+  await remove.click();
+  await expect(remove).toHaveText("Confirm remove");
+  expect(state.removed).toEqual([]);
+  await remove.click();
+  await expect(page.locator("#status-title")).toHaveText("Add a Spliit group.");
+  expect(state.removed).toEqual(["Trip"]);
   expect(state.errors).toEqual([]);
 });
 
-test("replace key opens the form, and cancel closes it", async ({page}) => {
-  const state = await openDashboard(page, "connected");
-  await page.click("#key-replace");
-  await expect(page.locator("#key-panel")).toBeVisible();
-  await expect(page.locator("#key-title")).toHaveText("Replace your Splitwise API key");
-  await page.click("#key-cancel");
-  await expect(page.locator("#key-panel")).toBeHidden();
+test("AI changes say what each app added and changed", async ({page}) => {
+  const dinner = {title: "Dinner", amount: "45.00", date: "2026-10-01", paid_by: "Jong", split_mode: "EVENLY",
+    paid_for: [{name: "Jong", share: null}, {name: "Alex", share: null}], category: "Dining", notes: null};
+  const state = await openDashboard(page, {groups: [TRIP], changes: [
+    {at: Date.now() / 1000, app: CLAUDE, tool: "update_expense", group: "Trip",
+      before: dinner, after: {...dinner, amount: "50.00"}},
+    {at: Date.now() / 1000, app: CLAUDE, tool: "create_expense", group: "Trip", before: null, after: dinner},
+  ]});
+  const rows = page.locator("#changes-list li");
+  await expect(rows.nth(0)).toContainText("Claude changed Dinner");
+  await expect(rows.nth(0)).toContainText("amount 45.00 → 50.00 · Trip");
+  await expect(rows.nth(1)).toContainText("Claude added Dinner");
+  await expect(rows.nth(1)).toContainText("45.00 · paid by Jong · Trip");
   expect(state.errors).toEqual([]);
 });
 
 test("the ChatGPT guide links to Plugins and offers the address to paste", async ({page}) => {
-  const state = await openDashboard(page, "connected");
+  const state = await openDashboard(page, {groups: [TRIP]});
   await expect(page.locator("#mcp-url")).toHaveText(BASE + "/mcp");
   await page.evaluate(() => document.querySelector('[data-guide="chatgpt"]').click());
   const guide = page.locator("#guide");
   await expect(guide).toBeVisible();
-  await expect(guide).toContainText("Name it Splitwise");
+  await expect(guide).toContainText("Name it Spliit");
   await expect(guide).toContainText(BASE + "/mcp");
   const links = await guide.locator("a.step-link").evaluateAll(
     anchors => anchors.map(a => [a.textContent, a.href, a.target]));

@@ -1,44 +1,44 @@
-"""The MCP tools: thin wrappers over Splitwise.
+"""The MCP tools: thin wrappers over Spliit, in names and decimal amounts.
 
-Expected failures come back as results with error_code and next_action, not tool errors,
-so the AI learns what to do next. Every write can be undone: delete with
-restore_expense, and update_expense returns the previous values.
+The AI names groups and people; it never sees a group ID, since that is the key to the
+group. Expected failures come back as results with error_code and next_action, not tool
+errors, so the AI learns what to do next. Every write is logged in Firestore with the
+expense before and after; update_expense also returns the previous values.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import date as Date, datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Annotated, Any
+import time
+from typing import Annotated, Any, Literal
 
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
-from splitwise import SplitwiseError, trim
+from spliit import NO_DECIMALS, SpliitError
 
 Amount = Annotated[str, Field(pattern=r"^\d{1,9}(\.\d{1,2})?$",
-                              description='Decimal string with at most 2 places, such as "12.50"')]
-Currency = Annotated[str, Field(pattern=r"^[A-Z]{3,5}$", description="Splitwise currency code, such as CAD")]
-Id = Annotated[int, Field(ge=1)]
-GroupId = Annotated[int, Field(ge=0, description="0 means no group")]
-Description = Annotated[str, Field(min_length=1, max_length=255)]
-Details = Annotated[str, Field(max_length=2000, description='Notes ("details" in Splitwise)')]
+                              description='Decimal string in the group currency, such as "12.50"')]
+GroupName = Annotated[str, Field(min_length=1, max_length=100, description="A name from list_groups")]
+PersonName = Annotated[str, Field(min_length=1, max_length=100, description="A member's name from list_groups")]
+ExpenseId = Annotated[str, Field(min_length=1, max_length=64)]
+Title = Annotated[str, Field(min_length=2, max_length=200)]
+Notes = Annotated[str, Field(max_length=5000)]
+SplitMode = Literal["EVENLY", "BY_SHARES", "BY_PERCENTAGE", "BY_AMOUNT"]
 
 NEXT_ACTIONS = {
-    "key_missing": "add_splitwise_key", "key_rejected": "replace_splitwise_key",
-    "rate_limited": "retry_later", "splitwise_unavailable": "retry_later",
-    "forbidden": "check_ids", "not_found": "check_ids",
+    "no_groups": "add_group", "group_missing": "check_group_link",
+    "spliit_unavailable": "retry_later", "not_found": "check_ids",
     "request_rejected": "fix_arguments", "invalid_arguments": "fix_arguments",
-    "possible_duplicate": "confirm_with_owner", "payment_not_supported": "tell_owner",
+    "possible_duplicate": "confirm_with_owner",
 }
-# An expense with the same cost created or changed this recently may be the same one.
+# An expense with the same amount, added this recently, may be the same one.
 DUPLICATE_DAYS = 3
 
 
-class Share(BaseModel):
-    user_id: Id
-    paid_share: Amount
-    owed_share: Amount
-
-
-Shares = Annotated[list[Share], Field(max_length=50)]
+class Portion(BaseModel):
+    name: PersonName
+    share: Annotated[str | None, Field(pattern=r"^\d{1,9}(\.\d{1,2})?$", description=(
+        "Ignored for EVENLY. For BY_SHARES a number of shares, for BY_PERCENTAGE a percent, "
+        "for BY_AMOUNT an amount in the group currency."))] = None
 
 
 class Failure(Exception):
@@ -49,253 +49,315 @@ class Failure(Exception):
         self.code, self.detail, self.extra = code, detail, extra
 
 
-def check_shares(shares, cost):
-    for field in ("paid_share", "owed_share"):
-        total = sum(Decimal(getattr(share, field)) for share in shares)
-        if total != Decimal(cost):
-            raise Failure("invalid_arguments", f"{field} values add up to {total}, not the cost {cost}")
-    return [share.model_dump() for share in shares]
+# ---------- Money: Spliit counts in minor units ----------
+
+def places(currency_code):
+    return 0 if currency_code in NO_DECIMALS else 2
 
 
-def iso(moment):
-    return moment.isoformat() if moment else None
+def to_minor(amount, currency_code):
+    return int(Decimal(amount).scaleb(places(currency_code)))
 
 
-def optional(**values):
-    return {k: v for k, v in values.items() if v is not None}
+def to_major(minor, currency_code):
+    return str(Decimal(minor).scaleb(-places(currency_code)))
 
 
-def previous_values(expense):
-    """What update_expense needs to put an expense back as it was."""
-    return {"description": expense["description"], "cost": expense["cost"],
-            "currency_code": expense["currency_code"], "date": expense["date"],
-            "category_id": expense["category"]["id"], "details": expense["details"],
-            "group_id": expense["group_id"],
-            "shares": [{"user_id": u["user_id"], "paid_share": u["paid_share"],
-                        "owed_share": u["owed_share"]} for u in expense["users"]]}
+def to_shares(mode, share, currency_code):
+    """Spliit stores shares and percents times 100, and amounts in minor units."""
+    if mode == "EVENLY":
+        return 100
+    if share is None:
+        raise Failure("invalid_arguments", f"each person in paid_for needs a share for {mode}")
+    if mode == "BY_AMOUNT":
+        return to_minor(share, currency_code)
+    return int(Decimal(share) * 100)
 
 
-def register(server, splitwise, owner_url, connector, security):
-    """Add the tools to server; returns the read tools by name for the dashboard's preview."""
+def from_shares(mode, shares, currency_code):
+    if mode == "EVENLY":
+        return None
+    if mode == "BY_AMOUNT":
+        return to_major(shares, currency_code)
+    return str(Decimal(shares) / 100)
+
+
+# ---------- What the AI sees ----------
+
+def expense_view(expense, group):
+    """One expense in names and decimal amounts. Both list and get answers fit here."""
+    names = {p["id"]: p["name"] for p in group["participants"]}
+    code = group["currencyCode"]
+    mode = expense["splitMode"]
+    view = {"id": expense["id"], "title": expense["title"], "date": expense["expenseDate"][:10],
+            "amount": to_major(expense["amount"], code),
+            "category": (expense.get("category") or {}).get("name"),
+            "paid_by": names.get(expense["paidBy"]["id"]), "split_mode": mode,
+            "paid_for": [{"name": names.get(p.get("participantId") or p["participant"]["id"]),
+                          "share": from_shares(mode, p["shares"], code)} for p in expense["paidFor"]],
+            "is_reimbursement": expense["isReimbursement"], "created_at": expense["createdAt"]}
+    if "notes" in expense:
+        view["notes"] = expense["notes"]
+    return view
+
+
+def form_from(expense):
+    """Spliit's update replaces the whole expense; start from what it is now."""
+    form = {"expenseDate": expense["expenseDate"], "title": expense["title"],
+            "category": expense["categoryId"], "amount": expense["amount"],
+            "paidBy": expense["paidById"], "splitMode": expense["splitMode"],
+            "paidFor": [{"participant": p["participantId"], "shares": p["shares"]} for p in expense["paidFor"]],
+            "isReimbursement": expense["isReimbursement"], "saveDefaultSplittingOptions": False,
+            "documents": [{k: d[k] for k in ("id", "url", "width", "height")} for d in expense["documents"]],
+            "notes": expense["notes"] or "", "recurrenceRule": expense["recurrenceRule"] or "NONE"}
+    for name in ("originalAmount", "originalCurrency", "conversionRate"):
+        if expense.get(name) is not None:
+            form[name] = expense[name]
+    return form
+
+
+def register(server, spliit, groups, changes, who, owner_url, connector, security):
+    """Add the tools to server. groups holds the saved groups, changes logs every write,
+    and who() names the AI app making this call. Returns the read tools by name, for the
+    dashboard's preview."""
     read = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True,
                            openWorldHint=True)
-    # Creating twice makes two expenses; nothing here destroys data that can't be restored.
-    create = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False,
-                             openWorldHint=True)
-    change = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True,
-                             openWorldHint=True)
+    # Adding twice makes two expenses; changes are logged with their previous values.
+    write = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False,
+                            openWorldHint=True)
 
     def run(work):
         try:
             return {"ok": True, **work()}
-        except (SplitwiseError, Failure) as error:
+        except (SpliitError, Failure) as error:
             result = {"ok": False, "error_code": error.code,
                       "next_action": NEXT_ACTIONS.get(error.code, "tell_owner")}
             if isinstance(error, Failure):
                 result.update(error.extra)
             if error.detail:
                 result["detail"] = error.detail
-            if error.code in {"key_missing", "key_rejected"}:
+            if error.code in {"no_groups", "group_missing"}:
                 result["owner_url"] = owner_url
             return result
 
-    def add_expense(fields, shares, allow_duplicate, payment=False):
+    def load(name):
+        """The saved entry and the live group for a group name."""
+        saved = groups.get()
+        if not saved:
+            raise Failure("no_groups", "No Spliit group is added yet.")
+        entry = next((g for g in saved if g["name"].casefold() == name.strip().casefold()), None)
+        if entry is None:
+            raise Failure("invalid_arguments", "Groups: " + ", ".join(g["name"] for g in saved))
+        group = spliit.group(entry["id"])
+        if group is None:
+            raise Failure("group_missing", f"Spliit has no group behind the saved {entry['name']} link.")
+        return entry, group
+
+    def person(group, name):
+        found = [p["id"] for p in group["participants"] if p["name"].casefold() == name.strip().casefold()]
+        if len(found) != 1:
+            raise Failure("invalid_arguments", "Members: " + ", ".join(p["name"] for p in group["participants"]))
+        return found[0]
+
+    def log(tool, entry, group, expense_id, before):
+        after = expense_view(spliit.expense(entry["id"], expense_id), group)
+        changes.add_change({"at": time.time(), "app": who(), "tool": tool, "group": entry["name"],
+                            "expense_id": expense_id, "before": before, "after": after})
+        return after
+
+    def add(tool, entry, group, form, allow_duplicate):
         if not allow_duplicate:
             since = datetime.now(timezone.utc) - timedelta(days=DUPLICATE_DAYS)
-            recent = splitwise.expenses(updated_after=since.isoformat(), limit=100)
-            same = [{k: e[k] for k in ("id", "description", "cost", "currency_code", "date", "created_at")}
-                    for e in recent
-                    if not e["deleted_at"] and Decimal(e["cost"]) == Decimal(fields["cost"])]
+            recent = spliit.expenses(entry["id"], 0, 30)["expenses"]
+            same = [expense_view(e, group) for e in recent
+                    if e["amount"] == form["amount"] and datetime.fromisoformat(e["createdAt"]) >= since]
             if same:
                 raise Failure("possible_duplicate", created=False, possible_duplicates=same)
-        return {"created": True, "expense": trim(splitwise.create_expense(fields, shares, payment))}
+        expense_id = spliit.create_expense(entry["id"], form, entry["me"])
+        return {"created": True, "expense": log(tool, entry, group, expense_id, None)}
 
     # ---------- Read ----------
 
     @server.tool(annotations=read, meta=security)
-    def get_status() -> dict[str, Any]:
-        """Check that Splitwise answers with the owner's key, and who the owner is there.
-
-        owner_url is this deployment's own dashboard. Give the owner that exact clickable
-        link when they ask where to manage the connector, or when next_action is
-        add_splitwise_key or replace_splitwise_key.
-        """
-        result = run(lambda: {"user": trim(splitwise.current_user())})
-        return {**result, "owner_url": owner_url, "connector": connector}
-
-    @server.tool(annotations=read, meta=security)
     def list_groups() -> dict[str, Any]:
-        """List the owner's groups with members, balances and debts.
+        """List the Spliit groups the owner added, with their currency, members, and which
+        member is the owner.
 
-        Group id 0 holds expenses outside any group. In original_debts and
-        simplified_debts, user "from" owes user "to" the amount. Balances are per currency;
-        never add different currencies together.
-        """
-        return run(lambda: {"groups": trim(splitwise.groups())})
-
-    @server.tool(annotations=read, meta=security)
-    def list_friends() -> dict[str, Any]:
-        """List the owner's friends with balances per currency, overall and per group.
-
-        A positive amount means that friend owes the owner; negative means the owner owes
-        them. Use the ids here as user_id in shares and payments.
-        """
-        return run(lambda: {"friends": trim(splitwise.friends())})
-
-    @server.tool(annotations=read, meta=security)
-    def list_expenses(
-        group_id: GroupId | None = None,
-        friend_id: Id | None = None,
-        dated_after: datetime | None = None,
-        dated_before: datetime | None = None,
-        updated_after: datetime | None = None,
-        updated_before: datetime | None = None,
-        limit: Annotated[int, Field(ge=1, le=100)] = 50,
-        offset: Annotated[int, Field(ge=0)] = 0,
-    ) -> dict[str, Any]:
-        """List expenses, newest first, optionally for one group or friend.
-
-        Rows with deleted_at set were deleted; skip them when totaling. payment true marks
-        a settle-up, not spending. Each row's users list shows paid_share, owed_share and
-        net_balance per person; the owner's spending is their owed_share. Total per
-        currency, never converted. Read every page (next_offset) before totaling.
+        owner_url is this deployment's own dashboard, where groups are added. Give the
+        owner that exact clickable link when they ask where to manage the connector, or
+        when next_action is add_group or check_group_link.
         """
         def work():
-            rows = splitwise.expenses(group_id=group_id, friend_id=friend_id,
-                                      dated_after=iso(dated_after), dated_before=iso(dated_before),
-                                      updated_after=iso(updated_after), updated_before=iso(updated_before),
-                                      limit=limit, offset=offset)
-            return {"expenses": trim(rows), "next_offset": offset + limit if len(rows) == limit else None}
+            listed = []
+            for entry in groups.get():
+                group = spliit.group(entry["id"])
+                if group is None:
+                    listed.append({"name": entry["name"], "error_code": "group_missing"})
+                    continue
+                me = next((p["name"] for p in group["participants"] if p["id"] == entry["me"]), None)
+                listed.append({"name": entry["name"], "currency": group["currencyCode"] or group["currency"],
+                               "members": [p["name"] for p in group["participants"]], "owner_is": me})
+            return {"groups": listed}
+        return {**run(work), "owner_url": owner_url, "connector": connector}
+
+    @server.tool(annotations=read, meta=security)
+    def get_balances(group: GroupName) -> dict[str, Any]:
+        """Each member's balance in a group, and the reimbursements Spliit suggests to settle up.
+
+        A positive balance means the group owes that member; negative means they owe.
+        In reimbursements, "from" pays "to" the amount.
+        """
+        def work():
+            entry, live = load(group)
+            names = {p["id"]: p["name"] for p in live["participants"]}
+            code = live["currencyCode"]
+            answer = spliit.balances(entry["id"])
+            return {"currency": code or live["currency"],
+                    "balances": [{"name": names.get(pid), "paid": to_major(b["paid"], code),
+                                  "paid_for": to_major(b["paidFor"], code), "balance": to_major(b["total"], code)}
+                                 for pid, b in answer["balances"].items()],
+                    "reimbursements": [{"from": names.get(r["from"]), "to": names.get(r["to"]),
+                                        "amount": to_major(r["amount"], code)} for r in answer["reimbursements"]]}
         return run(work)
 
     @server.tool(annotations=read, meta=security)
-    def get_expense(expense_id: Id) -> dict[str, Any]:
-        """Read one expense with its shares and comments."""
-        return run(lambda: {"expense": trim(splitwise.expense(expense_id)),
-                            "comments": trim(splitwise.comments(expense_id))})
+    def list_expenses(group: GroupName,
+                      title_contains: Annotated[str | None, Field(max_length=200)] = None,
+                      limit: Annotated[int, Field(ge=1, le=100)] = 50,
+                      offset: Annotated[int, Field(ge=0)] = 0) -> dict[str, Any]:
+        """List a group's expenses, newest first.
+
+        is_reimbursement true marks a settle-up, not spending. For each person in
+        paid_for, share means shares, a percent or an amount, as split_mode says; with
+        EVENLY it is null. Read every page (next_offset) before totaling.
+        """
+        def work():
+            entry, live = load(group)
+            answer = spliit.expenses(entry["id"], offset, limit, title_contains)
+            return {"currency": live["currencyCode"] or live["currency"],
+                    "expenses": [expense_view(e, live) for e in answer["expenses"]],
+                    "next_offset": answer["nextCursor"] if answer["hasMore"] else None}
+        return run(work)
+
+    @server.tool(annotations=read, meta=security)
+    def get_expense(group: GroupName, expense_id: ExpenseId) -> dict[str, Any]:
+        """Read one expense, with its notes."""
+        def work():
+            entry, live = load(group)
+            return {"expense": expense_view(spliit.expense(entry["id"], expense_id), live)}
+        return run(work)
 
     @server.tool(annotations=read, meta=security)
     def list_categories() -> dict[str, Any]:
-        """List Splitwise's expense categories and subcategories; use a subcategory id as category_id."""
-        return run(lambda: {"categories": trim(splitwise.categories())})
+        """List Spliit's expense categories; use an id as category_id."""
+        return run(lambda: {"categories": spliit.categories()})
 
     # ---------- Write ----------
 
-    @server.tool(annotations=create, meta=security)
+    @server.tool(annotations=write, meta=security)
     def create_expense(
-        description: Description,
-        cost: Amount,
-        currency_code: Currency | None = None,
-        group_id: GroupId | None = None,
-        split_equally: bool = False,
-        shares: Shares | None = None,
-        date: datetime | None = None,
-        category_id: Id | None = None,
-        details: Details | None = None,
+        group: GroupName,
+        title: Title,
+        amount: Amount,
+        paid_by: PersonName | None = None,
+        split_mode: SplitMode = "EVENLY",
+        paid_for: Annotated[list[Portion] | None, Field(max_length=100)] = None,
+        date: Date | None = None,
+        category_id: Annotated[int, Field(ge=0)] = 0,
+        notes: Notes | None = None,
         allow_duplicate: bool = False,
     ) -> dict[str, Any]:
-        """Record a new expense in Splitwise.
+        """Record a new expense in a group, in the group's currency.
 
-        Either set split_equally with a group_id (the owner paid, split among all group
-        members), or give shares: one per person, with what they paid and what they owe.
-        paid_share and owed_share each must add up to cost. Without currency_code,
-        Splitwise uses the owner's default currency; without date, now.
-        If error_code is possible_duplicate, nothing was created: an expense with the same
-        cost was added or changed in the last 3 days. Show the owner possible_duplicates
-        and call again with allow_duplicate true only if they confirm.
+        paid_by defaults to the owner; paid_for defaults to every member, split evenly.
+        With BY_AMOUNT the shares must add up to amount; with BY_PERCENTAGE, to 100.
+        date defaults to today. If error_code is possible_duplicate, nothing was created:
+        an expense with the same amount was added in the last 3 days. Show the owner
+        possible_duplicates and call again with allow_duplicate true only if they confirm.
         Never repeat a call that may have succeeded; read with list_expenses first.
         """
         def work():
-            if split_equally == (shares is not None):
-                raise Failure("invalid_arguments", "give either split_equally with a group_id, or shares")
-            fields = optional(description=description, cost=cost, currency_code=currency_code,
-                              group_id=group_id, date=iso(date), category_id=category_id,
-                              details=details, split_equally=split_equally or None)
-            checked = check_shares(shares, cost) if shares else None
-            return add_expense(fields, checked, allow_duplicate)
+            entry, live = load(group)
+            code = live["currencyCode"]
+            portions = paid_for or [Portion(name=p["name"]) for p in live["participants"]]
+            form = {"expenseDate": (date or Date.today()).isoformat(), "title": title, "category": category_id,
+                    "amount": to_minor(amount, code),
+                    "paidBy": person(live, paid_by) if paid_by else entry["me"], "splitMode": split_mode,
+                    "paidFor": [{"participant": person(live, p.name), "shares": to_shares(split_mode, p.share, code)}
+                                for p in portions],
+                    "isReimbursement": False, "saveDefaultSplittingOptions": False, "documents": [],
+                    "notes": notes or "", "recurrenceRule": "NONE"}
+            return add("create_expense", entry, live, form, allow_duplicate)
         return run(work)
 
-    @server.tool(annotations=create, meta=security)
-    def record_payment(
-        to_user_id: Id,
+    @server.tool(annotations=write, meta=security)
+    def record_reimbursement(
+        group: GroupName,
         amount: Amount,
-        from_user_id: Id | None = None,
-        currency_code: Currency | None = None,
-        group_id: GroupId | None = None,
-        date: datetime | None = None,
-        details: Details | None = None,
+        to: PersonName,
+        paid_by: PersonName | None = None,
+        date: Date | None = None,
+        notes: Notes | None = None,
         allow_duplicate: bool = False,
     ) -> dict[str, Any]:
-        """Record a settle-up: from_user_id paid to_user_id this amount outside Splitwise.
-
-        from_user_id defaults to the owner. It shows in Splitwise as a payment and reduces
-        what from_user_id owes to_user_id. Duplicates are handled as in create_expense.
-        """
+        """Record a settle-up: paid_by (the owner by default) paid this amount to someone
+        outside Spliit. Duplicates are handled as in create_expense."""
         def work():
-            payer = from_user_id or splitwise.current_user()["id"]
-            fields = optional(description="Payment", cost=amount, currency_code=currency_code,
-                              group_id=group_id, date=iso(date), details=details)
-            shares = [{"user_id": payer, "paid_share": amount, "owed_share": "0.00"},
-                      {"user_id": to_user_id, "paid_share": "0.00", "owed_share": amount}]
-            result = add_expense(fields, shares, allow_duplicate, payment=True)
-            expense = result["expense"]
-            if not expense["payment"]:
-                # Splitwise ignored payment and saved a regular expense: take it back out.
-                splitwise.delete_expense(expense["id"])
-                raise Failure("payment_not_supported",
-                              "Splitwise saved it as a regular expense, so it was deleted again.",
-                              deleted_expense_id=expense["id"])
-            return result
+            entry, live = load(group)
+            form = {"expenseDate": (date or Date.today()).isoformat(), "title": "Reimbursement",
+                    "category": 1,  # Spliit's Payment category, as its own reimbursement form uses
+                    "amount": to_minor(amount, live["currencyCode"]),
+                    "paidBy": person(live, paid_by) if paid_by else entry["me"], "splitMode": "EVENLY",
+                    "paidFor": [{"participant": person(live, to), "shares": 100}],
+                    "isReimbursement": True, "saveDefaultSplittingOptions": False, "documents": [],
+                    "notes": notes or "", "recurrenceRule": "NONE"}
+            return add("record_reimbursement", entry, live, form, allow_duplicate)
         return run(work)
 
-    @server.tool(annotations=change, meta=security)
+    @server.tool(annotations=write, meta=security)
     def update_expense(
-        expense_id: Id,
-        description: Description | None = None,
-        cost: Amount | None = None,
-        currency_code: Currency | None = None,
-        group_id: GroupId | None = None,
-        shares: Shares | None = None,
-        date: datetime | None = None,
-        category_id: Id | None = None,
-        details: Details | None = None,
+        group: GroupName,
+        expense_id: ExpenseId,
+        title: Title | None = None,
+        amount: Amount | None = None,
+        paid_by: PersonName | None = None,
+        split_mode: SplitMode | None = None,
+        paid_for: Annotated[list[Portion] | None, Field(max_length=100)] = None,
+        date: Date | None = None,
+        category_id: Annotated[int | None, Field(ge=0)] = None,
+        notes: Notes | None = None,
     ) -> dict[str, Any]:
         """Change an expense; pass only what changes.
 
-        shares replaces every share, so give all of them; a new cost needs new shares.
-        previous holds the values before this change: to undo it, call update_expense
-        again with them.
+        paid_for replaces everyone's share, so give all of them; with BY_AMOUNT a new
+        amount needs new shares. previous holds the expense before this change: to undo
+        it, call update_expense again with its values.
         """
         def work():
-            before = splitwise.expense(expense_id)
-            fields = optional(description=description, cost=cost, currency_code=currency_code,
-                              group_id=group_id, date=iso(date), category_id=category_id, details=details)
-            checked = check_shares(shares, cost or before["cost"]) if shares else None
-            after = splitwise.update_expense(expense_id, fields, checked)
-            return {"expense": trim(after), "previous": previous_values(before)}
+            entry, live = load(group)
+            code = live["currencyCode"]
+            current = spliit.expense(entry["id"], expense_id)
+            form = form_from(current)
+            if title is not None:
+                form["title"] = title
+            if amount is not None:
+                form["amount"] = to_minor(amount, code)
+            if paid_by is not None:
+                form["paidBy"] = person(live, paid_by)
+            if split_mode is not None:
+                form["splitMode"] = split_mode
+            if paid_for is not None:
+                form["paidFor"] = [{"participant": person(live, p.name),
+                                    "shares": to_shares(form["splitMode"], p.share, code)} for p in paid_for]
+            if date is not None:
+                form["expenseDate"] = date.isoformat()
+            if category_id is not None:
+                form["category"] = category_id
+            if notes is not None:
+                form["notes"] = notes
+            before = expense_view(current, live)
+            spliit.update_expense(entry["id"], expense_id, form, entry["me"])
+            return {"expense": log("update_expense", entry, live, expense_id, before), "previous": before}
         return run(work)
 
-    @server.tool(annotations=change, meta=security)
-    def delete_expense(expense_id: Id) -> dict[str, Any]:
-        """Delete an expense. Splitwise keeps it, so restore_expense brings it back."""
-        def work():
-            splitwise.delete_expense(expense_id)
-            return {"deleted": True, "expense_id": expense_id}
-        return run(work)
-
-    @server.tool(annotations=change, meta=security)
-    def restore_expense(expense_id: Id) -> dict[str, Any]:
-        """Bring back a deleted expense."""
-        def work():
-            splitwise.undelete_expense(expense_id)
-            return {"restored": True, "expense": trim(splitwise.expense(expense_id))}
-        return run(work)
-
-    @server.tool(annotations=create, meta=security)
-    def add_comment(expense_id: Id,
-                    content: Annotated[str, Field(min_length=1, max_length=2000)]) -> dict[str, Any]:
-        """Add a comment to an expense. Everyone on the expense can see it."""
-        return run(lambda: {"comment": trim(splitwise.create_comment(expense_id, content))})
-
-    return {"get_status": get_status, "list_groups": list_groups, "list_friends": list_friends,
-            "list_expenses": list_expenses}
+    return {"list_groups": list_groups, "get_balances": get_balances, "list_expenses": list_expenses}

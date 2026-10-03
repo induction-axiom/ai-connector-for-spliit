@@ -1,10 +1,10 @@
-"""Explicit deployment configuration. No Splitwise credentials."""
+"""Explicit deployment configuration. No Spliit group links."""
 from dataclasses import dataclass
 import json
 import os
 from urllib.parse import urlsplit
 
-SCOPE = "splitwise"
+SCOPE = "spliit"
 
 
 @dataclass(frozen=True)
@@ -15,7 +15,7 @@ class Config:
     firebase_config: dict
     database: str = "(default)"
     test_redirects: tuple[str, ...] = ()
-    api_key_secret: str = "splitwise-api-key"
+    groups_secret: str = "spliit-groups"
     scope: str = SCOPE
 
     @property
@@ -36,4 +36,4 @@ class Config:
         if public.get("projectId") != project or not public.get("apiKey"):
             raise ValueError("Firebase configuration mismatch")
         return cls(base, project, owner, public, os.environ["MCP_AUTH_DATABASE"],
-                   api_key_secret=os.environ["API_KEY_SECRET_ID"])
+                   groups_secret=os.environ["GROUPS_SECRET_ID"])

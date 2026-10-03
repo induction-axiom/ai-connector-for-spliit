@@ -1,4 +1,5 @@
-"""Small transactional record store; credentials are addressed by SHA-256 hashes."""
+"""Small transactional record store; credentials are addressed by SHA-256 hashes.
+Also the log of changes the AI made in Spliit."""
 from copy import deepcopy
 from datetime import datetime, timezone
 from threading import RLock
@@ -8,7 +9,16 @@ class MemoryStore:
     """Synthetic tests only; production always uses Firestore."""
     def __init__(self):
         self.data = {}
+        self.changes = []
         self.lock = RLock()
+
+    def add_change(self, record):
+        with self.lock:
+            self.changes.append(deepcopy(record))
+
+    def recent_changes(self, count):
+        with self.lock:
+            return deepcopy(sorted(self.changes, key=lambda r: r["at"], reverse=True)[:count])
 
     def get(self, key):
         with self.lock:
@@ -29,6 +39,15 @@ class FirestoreStore:
     def __init__(self, project, database):
         from google.cloud import firestore
         self.db = firestore.Client(project=project, database=database)
+
+    # AI changes to Spliit, kept for good: the dashboard lists them, newest first.
+    def add_change(self, record):
+        self.db.collection("ai_changes").add(record, timeout=10)
+
+    def recent_changes(self, count):
+        from google.cloud import firestore
+        query = self.db.collection("ai_changes").order_by("at", direction=firestore.Query.DESCENDING).limit(count)
+        return [doc.to_dict() for doc in query.stream(timeout=10)]
 
     def ref(self, key):
         # This adapter cannot name a different database or collection.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Provision, build, and deploy a self-hosted connector; never handles Splitwise credentials."""
+"""Provision, build, and deploy a self-hosted connector; never handles Spliit group links."""
 import argparse
 import json
 import os
@@ -211,12 +211,12 @@ def _ensure_web_app(cfg):
     if not isinstance(apps, list):
         raise RuntimeError("Firebase web app inventory response changed")
     app = next((item for item in apps if isinstance(item, dict)
-                and item.get("displayName") == "AI connector for Splitwise"), None)
+                and item.get("displayName") == "AI connector for Spliit"), None)
     if app is None and apps:
         app = apps[0]
     if app is None:
-        app = firebase(cfg, "apps:create", "WEB", "AI connector for Splitwise")
-        ui.created("Firebase web app AI connector for Splitwise")
+        app = firebase(cfg, "apps:create", "WEB", "AI connector for Spliit")
+        ui.created("Firebase web app AI connector for Spliit")
     else:
         ui.reused("Firebase web app " + str(app.get("displayName") or app.get("appId")))
     if not isinstance(app, dict) or not app.get("appId"):
@@ -269,7 +269,7 @@ def _write_bootstrap_firebase_config(cfg, destination):
     write_json(destination / "firestore.indexes.json", {"indexes": [], "fieldOverrides": []})
     value = {
         "auth": {"providers": {"googleSignIn": {
-            "oAuthBrandDisplayName": "Private AI connector for Splitwise",
+            "oAuthBrandDisplayName": "Private AI connector for Spliit",
             "supportEmail": cfg["owner_email"],
         }}},
         "firestore": [{"database": cfg["auth_database"], "rules": "firestore.rules",
@@ -284,7 +284,7 @@ SETUP_STEPS = (
     "Turn on the Google Cloud APIs it uses",
     "Create the service account the connector runs as",
     "Create the Firestore database for AI app sign-ins",
-    "Create the secret that will hold your Splitwise API key",
+    "Create the secret that will hold your Spliit group links",
     "Give the service account access to only what it needs",
     "Add Firebase Authentication with Google Sign-In for the dashboard",
     "Deploy the connector and its dashboard (the slow part)",
@@ -315,7 +315,7 @@ def provision(cfg, updating):
         else:
             refuse_on_update(updating, "Service account " + email(cfg, "mcp"))
             cloud(cfg, "iam", "service-accounts", "create", cfg["mcp_service_account"],
-                  "--display-name", "Splitwise connector")
+                  "--display-name", "Spliit connector")
             ui.created("service account " + email(cfg, "mcp"))
 
     with setup_step(3):
@@ -329,18 +329,18 @@ def provision(cfg, updating):
 
     with setup_step(4):
         secrets = set(cloud(cfg, "secrets", "list", "--format=value(name)").splitlines())
-        if cfg["api_key_secret_id"] in secrets:
-            ui.reused("secret " + cfg["api_key_secret_id"])
+        if cfg["groups_secret_id"] in secrets:
+            ui.reused("secret " + cfg["groups_secret_id"])
         else:
-            refuse_on_update(updating, "Secret " + cfg["api_key_secret_id"])
-            cloud(cfg, "secrets", "create", cfg["api_key_secret_id"],
+            refuse_on_update(updating, "Secret " + cfg["groups_secret_id"])
+            cloud(cfg, "secrets", "create", cfg["groups_secret_id"],
                   "--replication-policy=user-managed", "--locations", cfg["region"])
-            ui.created("secret " + cfg["api_key_secret_id"])
+            ui.created("secret " + cfg["groups_secret_id"])
 
     with setup_step(5):
-        # The dashboard saves, replaces and removes the key; nothing else can read it.
+        # The dashboard saves the group links; nothing else can read them.
         for role in ("secretAccessor", "secretVersionAdder", "secretVersionManager"):
-            cloud(cfg, "secrets", "add-iam-policy-binding", cfg["api_key_secret_id"],
+            cloud(cfg, "secrets", "add-iam-policy-binding", cfg["groups_secret_id"],
                   "--member=serviceAccount:" + email(cfg, "mcp"),
                   "--role=roles/secretmanager." + role)
         _grant_database_role(cfg, "mcp", cfg["auth_database"], "roles/datastore.user",
@@ -383,7 +383,7 @@ def summarize(cfg, checks):
     ui.say()
     ui.say(ui.bold("Next"))
     ui.say("  1. Open your dashboard (the link above) and bookmark it.")
-    ui.say(f'  2. Sign in with Google as {cfg["owner_email"]}, then add your Splitwise API key.')
+    ui.say(f'  2. Sign in with Google as {cfg["owner_email"]}, then add your Spliit groups.')
     ui.say("  3. Under AI apps, choose your AI app → How to connect.")
     ui.say()
 
@@ -429,7 +429,7 @@ def doctor(cfg):
             raise RuntimeError(f"Unexpected HTTP status {error.code} from {path}") from None
         if path == "/mcp":
             raise RuntimeError("MCP unexpectedly allows anonymous access")
-        if "scopes_supported" in value and value["scopes_supported"] != ["splitwise"]:
+        if "scopes_supported" in value and value["scopes_supported"] != ["spliit"]:
             raise RuntimeError("Unexpected OAuth scope")
         ui.line(f"PASS  GET {path} → 200")
         passed += 1
@@ -540,7 +540,7 @@ def open_project(project, owner_email, region):
 def confirm_bootstrap(cfg, updating, assume_yes):
     verb = "Update the" if updating else "Set up the"
     ui.say()
-    ui.say(ui.bold(verb + " AI connector for Splitwise"))
+    ui.say(ui.bold(verb + " AI connector for Spliit"))
     ui.say(f'  Project  {cfg["project_id"]} ({cfg["region"]})')
     ui.say(f'  Owner    {cfg["owner_email"]}')
     ui.say()
@@ -573,7 +573,7 @@ def main():
         p.error("Cloud commands require --project explicitly")
     try:
         if args.action == "bootstrap":
-            ui.say(ui.bold("AI connector for Splitwise setup"))
+            ui.say(ui.bold("AI connector for Spliit setup"))
             with ui.step("Choose your project"):
                 project = choose_project(args.project)
             ui.open_log(log_path(project, "setup"))

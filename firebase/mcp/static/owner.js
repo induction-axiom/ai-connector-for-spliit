@@ -5,7 +5,7 @@ import {getAuth, GoogleAuthProvider, signInWithPopup, browserSessionPersistence,
 
 const el = id => document.getElementById(id);
 const VIEWS = ["overview", "developer"];
-let auth, user, status, keyFormOpen = false, busy = false;
+let auth, user, status, groupFormOpen = false, busy = false;
 
 // ---------- Small helpers ----------
 
@@ -45,22 +45,22 @@ function say(id, text, tone = "neutral") {
 
 // ---------- Plain-language copy for result codes ----------
 
-// What each Splitwise outcome means for the owner.
-const SPLITWISE_COPY = {
+// What each Spliit outcome means for the owner.
+const SPLIIT_COPY = {
   connected: "Answering",
-  key_missing: "No API key yet",
-  key_rejected: "Splitwise doesn't accept the key",
-  rate_limited: "Splitwise asked the connector to slow down",
-  splitwise_unavailable: "Splitwise isn't answering",
-  forbidden: "Splitwise refused the request",
+  spliit_unavailable: "Spliit isn't answering",
+  request_rejected: "Spliit rejected the request",
 };
 
-const KEY_COPY = {
-  key_saved: ["Key saved. Your AI apps can use Splitwise now.", "success"],
-  key_invalid: ["Paste your Splitwise API key first.", "danger"],
-  key_rejected: ["Splitwise didn't accept that key. Create a new one and try again.", "danger"],
-  rate_limited: ["Splitwise is limiting requests. Wait a minute and try again.", "warning"],
-  splitwise_unavailable: ["Splitwise isn't answering right now. Nothing was saved; try again later.", "warning"],
+const GROUP_COPY = {
+  group_added: ["Group added. Your AI apps can use it now.", "success"],
+  group_removed: ["Group removed. Your AI apps can't use it any more; the group itself is unchanged in Spliit.", "success"],
+  link_invalid: ["That isn't a Spliit group link. It looks like https://spliit.app/groups/…", "danger"],
+  group_not_found: ["Spliit has no group behind that link.", "danger"],
+  member_invalid: ["Choose which member you are.", "danger"],
+  already_added: ["That group is already added.", "warning"],
+  name_taken: ["You already added a group with this name. Rename one in Spliit first.", "warning"],
+  spliit_unavailable: ["Spliit isn't answering right now. Nothing was saved; try again later.", "warning"],
 };
 
 // ---------- Views and routing ----------
@@ -95,37 +95,38 @@ function appNames(apps) {
   return names.length > 2 ? names.length + " apps" : names.join(" and ");
 }
 
-// The page answers one question first: can my AI use my Splitwise?
-function overallState(splitwise, apps) {
-  if (splitwise.state === "key_missing") return {
-    tone: "neutral", label: "Setup", title: "Add your Splitwise API key.", action: "key",
-    summary: "Your AI apps use Splitwise through this key. It takes a minute to create one.",
+// The page answers one question first: can my AI use my groups?
+function overallState(spliit, apps) {
+  const groups = spliit.groups || [];
+  if (spliit.state !== "connected") return {
+    tone: "warning", label: "Needs attention", title: "Spliit isn't answering right now.", action: "check",
+    summary: (SPLIIT_COPY[spliit.state] || "Something went wrong") + ". Your AI apps will try again when you ask.",
   };
-  if (splitwise.state === "key_rejected") return {
-    tone: "danger", label: "Action required", title: "Replace your Splitwise API key.", action: "key",
-    summary: "Splitwise no longer accepts the saved key, so your AI apps can't use Splitwise.",
+  if (!groups.length) return {
+    tone: "neutral", label: "Setup", title: "Add a Spliit group.", action: "group",
+    summary: "Paste a group's link, and say which member you are. Your AI apps can then use it.",
   };
-  if (splitwise.state !== "connected") return {
-    tone: "warning", label: "Needs attention", title: "Splitwise isn't answering right now.", action: "check",
-    summary: (SPLITWISE_COPY[splitwise.state] || "Something went wrong") + ". Your AI apps will try again when you ask.",
+  const broken = groups.filter(group => group.state !== "ok");
+  if (broken.length) return {
+    tone: "danger", label: "Action required", title: "A saved group link no longer works.", action: "check",
+    summary: `Spliit has no group behind the link saved as ${broken.map(g => g.name).join(", ")}. Remove it, or add the group again.`,
   };
-  const name = splitwise.user?.first_name;
   if (!apps.length) return {
     tone: "neutral", label: "Almost ready", title: "Connect an AI app.", action: "guide",
-    summary: `Splitwise is connected${name ? " as " + name : ""}. Add it to an AI app to start asking about your expenses.`,
+    summary: `${groups.length === 1 ? "Your group is" : "Your groups are"} ready. Add this connector to an AI app to start asking.`,
   };
   const used = apps.map(app => app.last_used_at).filter(Boolean).sort().at(-1);
   return {
-    tone: "success", label: "Ready", title: `${appNames(apps)} can use your Splitwise.`, action: "check",
-    summary: `Connected${name ? " as " + name : ""}.` + (used ? ` Last used ${ago(used)}.` : ""),
+    tone: "success", label: "Ready", title: `${appNames(apps)} can use your Spliit groups.`, action: "check",
+    summary: groups.map(g => g.name).join(", ") + (used ? `. Last used ${ago(used)}.` : "."),
   };
 }
 
 function renderStatus() {
-  const splitwise = status.splitwise || {};
+  const spliit = status.spliit || {};
   const failure = status.last_failure;
   const apps = status.apps || [];
-  const state = overallState(splitwise, apps);
+  const state = overallState(spliit, apps);
   el("overview-hero").dataset.tone = state.tone;
   el("status-label").textContent = state.label;
   el("status-title").textContent = state.title;
@@ -133,24 +134,18 @@ function renderStatus() {
   el("primary-action").disabled = busy;
   el("primary-action").dataset.action = state.action;
   el("primary-action").textContent = state.action === "guide" ? "Connect an AI app" : "Check again";
-  // When a key is needed, the form itself is the one action on the page.
-  const needsKey = state.action === "key";
-  el("primary-action").classList.toggle("hidden", needsKey);
-  showKeyForm(needsKey || keyFormOpen, !needsKey);
-  el("key-title").textContent = splitwise.state === "key_missing" ? "Add your Splitwise API key"
-    : "Replace your Splitwise API key";
-  el("key-remove").classList.toggle("hidden", !splitwise.key_saved_at);
-  el("key-replace").classList.toggle("hidden", !splitwise.key_saved_at);
-  el("apps-list").replaceChildren(...(apps.length ? apps.map(appRow) : [emptyRow("No apps are connected yet.")]));
-
-  const person = splitwise.user;
-  el("fact-account").textContent = person
-    ? [person.first_name, person.last_name].filter(Boolean).join(" ") + (person.email ? ` (${person.email})` : "")
-    : "—";
-  el("fact-key").textContent = splitwise.key_saved_at ? "Saved " + monthDay(splitwise.key_saved_at) : "Not added";
-  el("fact-live").textContent = SPLITWISE_COPY[splitwise.state] || splitwise.state || "—";
+  // With no group yet, the form itself is the one action on the page.
+  const needsGroup = state.action === "group";
+  el("primary-action").classList.toggle("hidden", needsGroup);
+  showGroupForm(needsGroup || groupFormOpen, !needsGroup);
+  const groups = spliit.groups || [];
+  el("groups-list").replaceChildren(...(groups.length ? groups.map(groupRow) : [emptyRow("No groups yet.")]));
+  el("fact-live").textContent = SPLIIT_COPY[spliit.state] || spliit.state || "—";
   el("fact-last-error").textContent = failure
-    ? `${SPLITWISE_COPY[failure.code] || failure.code}, ${ago(failure.at)}` : "None";
+    ? `${SPLIIT_COPY[failure.code] || failure.code}, ${ago(failure.at)}` : "None";
+  el("apps-list").replaceChildren(...(apps.length ? apps.map(appRow) : [emptyRow("No apps are connected yet.")]));
+  const changes = status.changes || [];
+  el("changes-list").replaceChildren(...(changes.length ? changes.map(changeRow) : [emptyRow("Nothing yet.")]));
 
   const diagnostics = status.diagnostics || {};
   el("mcp-url").textContent = diagnostics.mcp_endpoint || "—";
@@ -158,7 +153,7 @@ function renderStatus() {
   if (diagnostics.project_id) {
     el("project-id").textContent = diagnostics.project_id;
     el("project").classList.remove("hidden");
-    document.title = diagnostics.project_id + " · AI connector for Splitwise";
+    document.title = diagnostics.project_id + " · AI connector for Spliit";
     renderResources(diagnostics);
   }
   el("fact-version").textContent = [diagnostics.connector_version, diagnostics.commit?.slice(0, 7),
@@ -170,7 +165,7 @@ function renderStatus() {
     el("fact-source").replaceChildren(external(github, diagnostics.repository + " ↗"));
   }
   checkForUpdate(diagnostics.connector_version, diagnostics.repository);
-  el("fact-state").firstElementChild.textContent = splitwise.state || "—";
+  el("fact-state").firstElementChild.textContent = spliit.state || "—";
 }
 
 async function loadStatus() {
@@ -181,19 +176,13 @@ async function loadStatus() {
 // One operation at a time: these controls stay disabled until it ends.
 function setBusy(value) {
   busy = value;
-  for (const id of ["primary-action", "key-submit", "key-remove", "key-replace"]) el(id).disabled = value;
-}
-
-function showKeyForm(show, cancellable) {
-  el("key-panel").classList.toggle("hidden", !show);
-  el("key-cancel").classList.toggle("hidden", !cancellable);
-  if (!show) el("key-form").reset();
+  for (const id of ["primary-action", "lookup-submit", "add-submit", "group-add"]) el(id).disabled = value;
 }
 
 el("primary-action").onclick = async () => {
   if (el("primary-action").dataset.action === "guide") return el("apps").scrollIntoView({behavior: "smooth"});
   setBusy(true);
-  say("message", "Checking Splitwise…");
+  say("message", "Checking Spliit…");
   try {
     await loadStatus();
     say("message", "");
@@ -205,61 +194,148 @@ el("primary-action").onclick = async () => {
   }
 };
 
-el("key-form").onsubmit = async event => {
+// ---------- Spliit groups ----------
+
+function showGroupForm(show, cancellable) {
+  el("group-panel").classList.toggle("hidden", !show);
+  el("group-cancel").classList.toggle("hidden", !cancellable);
+  if (!show) {
+    el("lookup-form").reset();
+    el("lookup-form").classList.remove("hidden");
+    el("add-form").classList.add("hidden");
+  }
+}
+
+function groupRow(group) {
+  const row = document.createElement("li");
+  row.className = "row";
+  const text = document.createElement("div");
+  const title = document.createElement("strong");
+  title.textContent = group.name;
+  const detail = document.createElement("span");
+  detail.textContent = group.state === "ok"
+    ? [group.me && "You are " + group.me, group.currency, group.members.length + " members"].filter(Boolean).join(" · ")
+    : group.state === "group_missing" ? "Spliit has no group behind this link" : "Couldn't check this group";
+  text.append(title, detail);
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "link-button danger";
+  button.textContent = "Remove";
+  // Two-step: the first click asks, the second one removes.
+  button.onclick = async () => {
+    if (!button.dataset.confirm) {
+      button.dataset.confirm = "1";
+      button.textContent = "Confirm remove";
+      return;
+    }
+    button.disabled = true;
+    try {
+      const {result} = await api("/owner/groups/remove", {name: group.name});
+      await loadStatus();
+      say("message", ...GROUP_COPY[result]);
+    } catch (error) {
+      if (error instanceof OwnerSessionExpired) return expireSession();
+      button.textContent = "Try again";
+      button.disabled = false;
+    }
+  };
+  row.append(text, button);
+  return row;
+}
+
+el("group-add").onclick = () => {
+  groupFormOpen = true;
+  renderStatus();
+  el("group-panel").scrollIntoView({behavior: "smooth"});
+  el("group-link").focus();
+};
+
+el("group-cancel").onclick = () => {
+  groupFormOpen = false;
+  renderStatus();
+};
+
+// Step one: look the link up, and list the group's members.
+el("lookup-form").onsubmit = async event => {
   event.preventDefault();
   setBusy(true);
-  say("message", "Checking the key with Splitwise…");
+  say("message", "Looking the group up in Spliit…");
   try {
-    const {result} = await api("/owner/key", {api_key: el("api-key").value});
-    el("api-key").value = "";
-    if (result === "key_saved") keyFormOpen = false;
-    await loadStatus();
-    say("message", ...(KEY_COPY[result] || ["The key couldn't be checked. Nothing was saved.", "danger"]));
+    const reply = await api("/owner/groups/lookup", {link: el("group-link").value});
+    if (reply.result !== "found") return say("message", ...(GROUP_COPY[reply.result] || GROUP_COPY.spliit_unavailable));
+    say("message", "");
+    el("members-title").textContent = `Which member of ${reply.name} are you?`;
+    el("members").replaceChildren(...reply.members.map(member => {
+      const label = document.createElement("label");
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "me";
+      input.value = member.id;
+      input.required = true;
+      label.append(input, member.name);
+      return label;
+    }));
+    el("lookup-form").classList.add("hidden");
+    el("add-form").classList.remove("hidden");
   } catch (error) {
     if (error instanceof OwnerSessionExpired) return expireSession();
-    say("message", "The key couldn't be saved. Try again.", "danger");
+    say("message", "The group couldn't be looked up. Try again.", "danger");
+  } finally {
+    setBusy(false);
+  }
+};
+
+// Step two: save the link with the member who is the owner.
+el("add-form").onsubmit = async event => {
+  event.preventDefault();
+  setBusy(true);
+  try {
+    const me = el("add-form").querySelector("input[name=me]:checked")?.value;
+    const {result} = await api("/owner/groups/add", {link: el("group-link").value, me});
+    if (result === "group_added") groupFormOpen = false;
+    await loadStatus();
+    say("message", ...(GROUP_COPY[result] || GROUP_COPY.spliit_unavailable));
+  } catch (error) {
+    if (error instanceof OwnerSessionExpired) return expireSession();
+    say("message", "The group couldn't be added. Try again.", "danger");
   } finally {
     setBusy(false);
   }
   window.scrollTo({top: 0, behavior: "smooth"});
 };
 
-el("key-replace").onclick = () => {
-  keyFormOpen = true;
-  renderStatus();
-  el("key-panel").scrollIntoView({behavior: "smooth"});
-  el("api-key").focus();
-};
+// ---------- AI changes ----------
 
-el("key-cancel").onclick = () => {
-  keyFormOpen = false;
-  renderStatus();
-};
+const CHANGE_FIELDS = {title: "title", amount: "amount", date: "date", paid_by: "paid by",
+  split_mode: "split", paid_for: "who it's for", category: "category", notes: "notes"};
 
-// Two clicks: the first asks, the second destroys the saved key.
-el("key-remove").onclick = async () => {
-  const button = el("key-remove");
-  if (!button.dataset.confirm) {
-    button.dataset.confirm = "1";
-    button.textContent = "Click again to remove";
-    return;
+const shown = value => value === null || value === undefined || value === "" ? "none"
+  : Array.isArray(value) ? value.map(p => p.share ? `${p.name} ${p.share}` : p.name).join(", ") : String(value);
+
+// "Claude added Groceries" with its amount, or "Claude changed Dinner" with what changed.
+function changeRow(change) {
+  const row = document.createElement("li");
+  row.className = "row";
+  const text = document.createElement("div");
+  const title = document.createElement("strong");
+  const detail = document.createElement("span");
+  const app = appName(change.app || {});
+  const after = change.after || {};
+  if (!change.before) {
+    title.textContent = `${app} ${after.is_reimbursement ? "recorded a reimbursement" : "added " + after.title}`;
+    detail.textContent = [after.amount, after.paid_by && "paid by " + after.paid_by, change.group, ago(change.at)]
+      .filter(Boolean).join(" · ");
+  } else {
+    title.textContent = `${app} changed ${change.before.title}`;
+    const diffs = Object.entries(CHANGE_FIELDS)
+      .filter(([field]) => JSON.stringify(change.before[field]) !== JSON.stringify(after[field]))
+      .map(([field, label]) => `${label} ${shown(change.before[field])} → ${shown(after[field])}`);
+    detail.textContent = [...diffs, change.group, ago(change.at)].join(" · ");
   }
-  delete button.dataset.confirm;
-  button.textContent = "Remove key";
-  setBusy(true);
-  try {
-    await api("/owner/key/remove");
-    await loadStatus();
-    say("message", "Key removed. Your AI apps can't use Splitwise until you add one again. "
-      + "To cancel the key itself, delete it on your Splitwise apps page.", "success");
-    window.scrollTo({top: 0, behavior: "smooth"});
-  } catch (error) {
-    if (error instanceof OwnerSessionExpired) return expireSession();
-    say("message", "Couldn't remove the key. Try again.", "danger");
-  } finally {
-    setBusy(false);
-  }
-};
+  text.append(title, detail);
+  row.append(text);
+  return row;
+}
 
 // ---------- AI apps ----------
 
@@ -364,21 +440,21 @@ function guides() {
     chatgpt: {title: "Connect ChatGPT", steps: [
       {text: "Open Plugins in ChatGPT on the web.",
         href: CHATGPT_PLUGINS, label: "Open ChatGPT Plugins"},
-      "Choose Add, then Create MCP App. Name it Splitwise.",
+      "Choose Add, then Create MCP App. Name it Spliit.",
       {text: "Under Connection, keep Server URL and paste this address. Leave Authentication on OAuth.",
         copy: d.mcp_endpoint},
       "Tick I understand and want to continue, then choose Create.",
       "When a sign-in window opens, choose this Google account and allow access.",
-      "On the plugin's page, choose Try in chat. Later, type @Splitwise in any chat to use it.",
+      "On the plugin's page, choose Try in chat. Later, type @Spliit in any chat to use it.",
     ], note: "No Create MCP App under Add? Turn on Developer mode in ChatGPT's settings first. ChatGPT renames its menus from time to time; look for the closest match."},
     claude: {title: "Connect Claude", steps: [
       {text: "Open Connectors in Claude on the web.",
         href: CLAUDE_CONNECTORS, label: "Open Claude Connectors"},
-      "Choose +, then Add custom connector. Name it Splitwise.",
+      "Choose +, then Add custom connector. Name it Spliit.",
       {text: "Paste this address as the server URL, then continue.", copy: d.mcp_endpoint},
       "Keep the detected settings: Sign in now, and Register automatically. Leave Request headers empty, then choose Add.",
       "When a sign-in window opens, choose this Google account and allow access.",
-      "In a chat, make sure Splitwise is turned on under + and Connectors, then ask about your expenses.",
+      "In a chat, make sure Spliit is turned on under + and Connectors, then ask about your expenses.",
     ], note: "Claude renames its menus from time to time; look for the closest match."},
     gemini: {title: "Connect Gemini", steps: [
       {text: "Open Apps in Gemini Spark on the web.",
@@ -386,7 +462,7 @@ function guides() {
       {text: "Choose Add a custom app, and paste this address as the MCP server URL.", copy: d.mcp_endpoint},
       "Leave Client ID and Client secret empty, then continue.",
       "When a sign-in window opens, choose this Google account and allow access.",
-      "In a Spark task, type @ and choose Splitwise, then ask about your expenses.",
+      "In a Spark task, type @ and choose Spliit, then ask about your expenses.",
     ], note: "Gemini renames its menus from time to time; look for the closest match."},
     update: {title: `Update to ${latestRelease?.version}`, steps: [
       {text: "Open Cloud Shell with the latest code. Sign in with the Google account that owns this project if asked.",
@@ -395,7 +471,7 @@ function guides() {
         label: "Open Cloud Shell"},
       {text: "Paste this into the terminal and press Enter:",
         copy: `firebase/scripts/bootstrap.sh ${d.project_id} ${user?.email}`},
-      "Type y when asked. It takes about 5 minutes. Your API key and AI app connections stay as they are.",
+      "Type y when asked. It takes about 5 minutes. Your groups and AI app connections stay as they are.",
     ], note: "Updating only deploys new code into your own project. You can read every change first under What's new."},
   };
 }
@@ -465,8 +541,8 @@ function renderResources(d) {
   const service = label.replace(/-\d+$/, "");
   const rows = [
     ["This dashboard and MCP", "The Cloud Run service your AI apps talk to", cloud(`run/detail/${region}/${service}/metrics`)],
-    ["Splitwise API key", "Secret Manager; only the connector can read it", cloud(`security/secret-manager/secret/${d.api_key_secret}/versions`)],
-    ["AI app sign-ins", "Firestore database with OAuth grants; no Splitwise data", database(d.auth_database)],
+    ["Spliit group links", "Secret Manager; only the connector can read them", cloud(`security/secret-manager/secret/${d.groups_secret}/versions`)],
+    ["Sign-ins and AI changes", "Firestore: AI app sign-ins, and the log of AI changes", database(d.auth_database)],
     ["Logs", "What the connector has been doing", cloud("logs/query")],
     ["Usage and billing", "What this project costs on the Blaze plan", `${firebase}/usage`],
   ];
@@ -486,7 +562,7 @@ function renderResources(d) {
 
 // ---------- Developer ----------
 
-let previewTarget = "get_status";
+let previewTarget = "list_groups";
 
 async function preview(target) {
   previewTarget = target;
@@ -498,7 +574,7 @@ async function preview(target) {
     output.textContent = JSON.stringify(await api("/owner/preview", {target}), null, 2);
   } catch (error) {
     if (error instanceof OwnerSessionExpired) return expireSession();
-    output.textContent = "The preview couldn't be loaded.";
+    output.textContent = error.message === "no_groups" ? "Add a group first." : "The preview couldn't be loaded.";
   }
 }
 
@@ -528,8 +604,8 @@ async function expireSession(text = "Your sign-in expired. Sign in again to cont
 
 function signedOut() {
   user = status = null;
-  keyFormOpen = false;
-  el("key-panel").classList.add("hidden");
+  groupFormOpen = false;
+  el("group-panel").classList.add("hidden");
   el("project").classList.add("hidden");
   showSignedIn(false);
   el("signin").disabled = false;
@@ -570,3 +646,4 @@ el("signin").onclick = async () => {
 
 el("signout").onclick = () => signOut(auth).then(() => say("signin-message", "Signed out."));
 window.addEventListener("hashchange", () => { if (user) showView(); });
+
