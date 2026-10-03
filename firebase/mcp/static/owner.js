@@ -52,13 +52,12 @@ const SPLITWISE_COPY = {
   key_rejected: "Splitwise doesn't accept the key",
   rate_limited: "Splitwise asked the connector to slow down",
   splitwise_unavailable: "Splitwise isn't answering",
-  response_invalid: "Splitwise answered in an unexpected format",
   forbidden: "Splitwise refused the request",
 };
 
 const KEY_COPY = {
   key_saved: ["Key saved. Your AI apps can use Splitwise now.", "success"],
-  key_invalid: ["That doesn't look like a Splitwise API key. Copy the whole key and try again.", "danger"],
+  key_invalid: ["Paste your Splitwise API key first.", "danger"],
   key_rejected: ["Splitwise didn't accept that key. Create a new one and try again.", "danger"],
   rate_limited: ["Splitwise is limiting requests. Wait a minute and try again.", "warning"],
   splitwise_unavailable: ["Splitwise isn't answering right now. Nothing was saved; try again later.", "warning"],
@@ -124,7 +123,7 @@ function overallState(splitwise, apps) {
 
 function renderStatus() {
   const splitwise = status.splitwise || {};
-  const health = status.health || {};
+  const failure = status.last_failure;
   const apps = status.apps || [];
   const state = overallState(splitwise, apps);
   el("overview-hero").dataset.tone = state.tone;
@@ -149,12 +148,9 @@ function renderStatus() {
     ? [person.first_name, person.last_name].filter(Boolean).join(" ") + (person.email ? ` (${person.email})` : "")
     : "—";
   el("fact-key").textContent = splitwise.key_saved_at ? "Saved " + monthDay(splitwise.key_saved_at) : "Not added";
-  el("fact-live").textContent = (SPLITWISE_COPY[splitwise.state] || splitwise.state || "—")
-    + (splitwise.state === "connected" && Number.isFinite(splitwise.latency_ms) ? ` · ${splitwise.latency_ms} ms` : "");
-  el("fact-last-ok").textContent = ago(health.last_ok_at) || "Not yet";
-  el("fact-last-error").textContent = health.last_error_code
-    ? `${SPLITWISE_COPY[health.last_error_code] || health.last_error_code}, ${ago(health.last_error_at)}`
-    : "None";
+  el("fact-live").textContent = SPLITWISE_COPY[splitwise.state] || splitwise.state || "—";
+  el("fact-last-error").textContent = failure
+    ? `${SPLITWISE_COPY[failure.code] || failure.code}, ${ago(failure.at)}` : "None";
 
   const diagnostics = status.diagnostics || {};
   el("mcp-url").textContent = diagnostics.mcp_endpoint || "—";
@@ -175,7 +171,6 @@ function renderStatus() {
   }
   checkForUpdate(diagnostics.connector_version, diagnostics.repository);
   el("fact-state").firstElementChild.textContent = splitwise.state || "—";
-  el("fact-latency").textContent = Number.isFinite(splitwise.latency_ms) ? splitwise.latency_ms + " ms" : "—";
 }
 
 async function loadStatus() {

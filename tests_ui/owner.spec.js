@@ -22,10 +22,9 @@ const FIREBASE_AUTH = `
 function status(state, apps = []) {
   const connected = state === "connected";
   return {
-    splitwise: {state, checked_at: 1790000000, latency_ms: 120,
-      key_saved_at: state === "key_missing" ? null : 1790000000,
-      user: connected ? {id: 1, first_name: "Sam", last_name: null, email: "sam@example.com"} : undefined},
-    health: {last_ok_at: connected ? 1790000000 : null, last_error_code: null, last_error_at: null},
+    splitwise: {state, key_saved_at: state === "key_missing" ? null : 1790000000,
+      user: connected ? {first_name: "Sam", last_name: null, email: "sam@example.com"} : undefined},
+    last_failure: null,
     apps,
     diagnostics: {connector_version: "test", repository: "example/example", project_id: "your-project",
       api_key_secret: "splitwise-api-key", auth_database: "(default)", mcp_endpoint: BASE + "/mcp"},

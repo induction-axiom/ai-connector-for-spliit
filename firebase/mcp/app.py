@@ -2,7 +2,6 @@
 import json
 import logging
 from pathlib import Path
-import re
 import time
 from urllib.parse import parse_qs, urlencode, urlsplit
 
@@ -18,7 +17,6 @@ from starlette.routing import Route
 
 from api_key import SecretKey
 from config import Config
-from health import Health
 from oauth import ConsentError, Provider
 from splitwise import Splitwise, SplitwiseError
 from store import FirestoreStore
@@ -55,8 +53,8 @@ RATE_LIMITS = {"/register": 12, "/authorize": 30, "/consent/start": 30, "/consen
                "/owner/preview": 30, "/owner/apps/disconnect": 10}
 MAX_QUERY_BYTES = 4096
 MAX_BODY_BYTES = 16384
-# Splitwise API keys are 40 letters and digits; allow some room in case that changes.
-API_KEY_PATTERN = r"[A-Za-z0-9_-]{20,200}"
+# The dashboard shows when Splitwise last failed a request, and why.
+LAST_FAILURE = "splitwise_last_failure"
 PREVIEWS = {"get_status", "list_groups", "list_friends", "list_expenses"}
 
 
@@ -237,8 +235,10 @@ def create_app(config, store, owner_verifier, api_key, transport=None):
     verifier = owner_verifier or (lambda token, max_age=CONSENT_AUTH_AGE:
                                   verify_owner(token, config, max_age))
     owner_url = config.base_url + "/owner"
-    health = Health(store)
-    splitwise = Splitwise(api_key, transport=transport, observe=health)
+    def remember_failure(code):
+        store.transact([LAST_FAILURE], lambda _: (None, {LAST_FAILURE: {"code": code, "at": time.time()}}))
+
+    splitwise = Splitwise(api_key, remember_failure, transport)
     server = MCPServer(
         "Private AI connector for Splitwise",
         version=VERSION,
@@ -267,7 +267,7 @@ def create_app(config, store, owner_verifier, api_key, transport=None):
 
     # ---------- Public pages and OAuth consent ----------
 
-    async def health_check(request):
+    async def health(request):
         return JSONResponse({"service": "ai-connector-for-splitwise", "connector_version": VERSION})
 
     async def metadata(request):
@@ -355,23 +355,19 @@ def create_app(config, store, owner_verifier, api_key, transport=None):
         return endpoint
 
     def check_splitwise():
-        """Ask Splitwise who the key belongs to, timed, as the dashboard's live status."""
-        started = time.monotonic()
+        """Ask Splitwise who the key belongs to: the dashboard's live status."""
         try:
             user = splitwise.current_user()
-            state = {"state": "connected", "user": {k: user.get(k) for k in (
-                "id", "first_name", "last_name", "email", "default_currency")}}
         except SplitwiseError as error:
-            state = {"state": error.code, "detail": error.detail}
-        return {**state, "checked_at": time.time(),
-                "latency_ms": round((time.monotonic() - started) * 1000)}
+            return {"state": error.code}
+        return {"state": "connected", "user": {k: user[k] for k in ("first_name", "last_name", "email")}}
 
     @owner_endpoint
     async def owner_status(body):
         live = await anyio.to_thread.run_sync(check_splitwise)
         saved_at = await anyio.to_thread.run_sync(api_key.saved_at)
         return JSONResponse({"splitwise": {**live, "key_saved_at": saved_at},
-                             "health": await anyio.to_thread.run_sync(health.read),
+                             "last_failure": await anyio.to_thread.run_sync(store.get, LAST_FAILURE),
                              "apps": await anyio.to_thread.run_sync(provider.connected_apps),
                              "diagnostics": {"connector_version": VERSION,
                                              "commit": BUILD.get("commit"),
@@ -385,17 +381,15 @@ def create_app(config, store, owner_verifier, api_key, transport=None):
     @owner_endpoint
     async def owner_key(body):
         """Check a new key with Splitwise first; save it only if Splitwise accepts it."""
-        candidate = body.get("api_key")
-        if not isinstance(candidate, str) or not re.fullmatch(API_KEY_PATTERN, candidate.strip()):
+        candidate = str(body.get("api_key") or "").strip()
+        if not candidate:
             return JSONResponse({"result": "key_invalid"})
-        candidate = candidate.strip()
         try:
             user = await anyio.to_thread.run_sync(lambda: splitwise.current_user(key=candidate))
         except SplitwiseError as error:
             return JSONResponse({"result": error.code})
         await anyio.to_thread.run_sync(api_key.replace, candidate)
-        return JSONResponse({"result": "key_saved", "user": {k: user.get(k) for k in (
-            "first_name", "last_name", "email")}})
+        return JSONResponse({"result": "key_saved"})
 
     @owner_endpoint
     async def owner_key_remove(body):
@@ -426,7 +420,7 @@ def create_app(config, store, owner_verifier, api_key, transport=None):
             allowed_origins=[config.base_url, "https://chatgpt.com", "https://claude.ai", "https://claude.com"]))
     app.routes[:] = [r for r in app.routes if getattr(r, "path", "") != "/.well-known/oauth-authorization-server"]
     app.routes.extend([
-        Route("/", health_check), Route("/health", health_check),
+        Route("/", health), Route("/health", health),
         Route("/.well-known/oauth-authorization-server", metadata),
         Route("/consent", consent_page), Route("/owner", owner_page),
         Route("/assets/{name}", asset),

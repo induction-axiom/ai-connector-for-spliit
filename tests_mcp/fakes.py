@@ -25,13 +25,10 @@ class MemoryKey:
     """SecretKey's interface without Secret Manager."""
 
     def __init__(self, value=KEY):
-        self.value, self.invalidated = value, 0
+        self.value = value
 
     def get(self):
         return self.value
-
-    def invalidate(self):
-        self.invalidated += 1
 
     def replace(self, value):
         self.value = value

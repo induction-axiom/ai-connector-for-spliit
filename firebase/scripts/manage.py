@@ -178,8 +178,7 @@ def _grant_database_role(cfg, role_name, database, role, title):
 
 def _ensure_database(cfg, database, existing, updating):
     full_name = f'projects/{cfg["project_id"]}/databases/{database}'
-    created = full_name not in existing
-    if created:
+    if full_name not in existing:
         refuse_on_update(updating, "Firestore database " + database)
         cloud(cfg, "firestore", "databases", "create", "--database", database,
               "--location", cfg["region"], "--type=firestore-native", "--delete-protection")
@@ -190,8 +189,8 @@ def _ensure_database(cfg, database, existing, updating):
                                "--format=json"))
     # A (default) database made earlier, say in the Firebase console, may sit in another
     # location; that works, since the connector only keeps sign-ins there.
-    if details.get("type") != "FIRESTORE_NATIVE" or (created and details.get("locationId") != cfg["region"]):
-        raise RuntimeError("Existing database has an incompatible location or type: " + database)
+    if details.get("type") != "FIRESTORE_NATIVE":
+        raise RuntimeError("Existing database is not in Firestore Native mode: " + database)
 
 
 def _ensure_firebase_project(cfg):
