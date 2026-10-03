@@ -9,8 +9,7 @@ import unittest
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
-from fakes import (BASE, CALLBACK, OWNER, FakeActivityReader, FakeCloudFunctions,
-                   FakeReader, owner_identity)
+from fakes import BASE, CALLBACK, OWNER, FakeSplitwise, MemoryKey, owner_identity
 from starlette.testclient import TestClient
 from app import create_app, verify_owner, COOKIE
 from config import Config, SCOPE
@@ -21,11 +20,10 @@ class OAuthTests(unittest.TestCase):
     def setUp(self):
         self.store = MemoryStore()
         self.config = Config(BASE, "synthetic-project", OWNER["email"], {})
-        self.reader = FakeReader()
-        self.refresher = FakeCloudFunctions()
-        self.activity_reader = FakeActivityReader()
-        self.app = create_app(self.config, self.store, owner_identity,
-                              self.reader, self.refresher, self.activity_reader)
+        self.splitwise = FakeSplitwise()
+        self.key = MemoryKey()
+        self.app = create_app(self.config, self.store, owner_identity, self.key,
+                              self.splitwise.transport)
         self.client = TestClient(self.app, base_url=BASE, follow_redirects=False)
         self.client.__enter__()
         self.addCleanup(self.client.__exit__, None, None, None)
@@ -102,8 +100,10 @@ class OAuthTests(unittest.TestCase):
         r = self.mcp(t["access_token"])
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual({x["name"] for x in r.json()["result"]["tools"]},
-                         {"get_data_status", "get_portfolio", "list_activities"})
-        call = self.mcp(t["access_token"], "tools/call", {"name": "get_data_status", "arguments": {}})
+                         {"get_status", "list_groups", "list_friends", "list_expenses", "get_expense",
+                          "list_categories", "create_expense", "record_payment", "update_expense",
+                          "delete_expense", "restore_expense", "add_comment"})
+        call = self.mcp(t["access_token"], "tools/call", {"name": "get_status", "arguments": {}})
         self.assertEqual(call.status_code, 200, call.text)
         data = call.json()["result"]["structuredContent"]
         self.assertEqual(data["owner_url"], BASE + "/owner")
@@ -274,6 +274,12 @@ class OAuthTests(unittest.TestCase):
         r = self.client.post("/token", content="resource=x&resource=y", headers={"Content-Type":"application/x-www-form-urlencoded"})
         self.assertEqual(r.status_code, 400)
         self.assertEqual(self.client.post("/register", content=b"x"*20000).status_code, 413)
+
+    def test_consent_shows_when_the_app_registered(self):
+        response = self.begin()
+        ticket = parse_qs(urlsplit(response.headers["location"]).fragment)["request"][0]
+        view = self.client.post("/consent/start", headers={"Origin": BASE}, json={"request": ticket}).json()
+        self.assertAlmostEqual(view["registered_at"], time.time(), delta=60)
 
 
 if __name__ == "__main__":

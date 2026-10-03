@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>AI connector for your Wealthsimple</title>
+  <title>AI connector for Splitwise</title>
   <link rel="stylesheet" href="/assets/style.css">
 </head>
 <body class="owner-page">
   <header class="nav">
     <div class="nav-inner">
       <a class="brand" href="#overview" aria-label="Overview">
-        <span class="brand-name">AI connector for your Wealthsimple</span>
+        <span class="brand-name">AI connector for Splitwise</span>
       </a>
       <a id="project" class="project hidden" target="_blank" rel="noopener" title="Open this project in the Firebase console">
         <span class="project-dot" aria-hidden="true"></span><span id="project-id"></span><span aria-hidden="true">↗</span>
@@ -35,8 +35,8 @@
   <main>
     <!-- Signed out -->
     <section id="signin-view" class="view hero">
-      <p class="eyebrow">Private · Read-only · Self-hosted</p>
-      <h1>Your portfolio,<br>ready for your AI.</h1>
+      <p class="eyebrow">Private · Self-hosted</p>
+      <h1>Your shared expenses,<br>ready for your AI.</h1>
       <p class="lede">Sign in with the Google account that owns this deployment.</p>
       <div class="actions">
         <button id="signin" class="pill" type="button" disabled>Sign in with Google</button>
@@ -44,31 +44,31 @@
       <p id="signin-message" class="note" role="status">Loading…</p>
     </section>
 
-    <!-- Overview: status, the apps that read your data, and the data itself -->
+    <!-- Overview: status, the API key, and the apps that use it -->
     <section id="overview-view" class="view hidden" data-view="overview">
       <div id="overview-hero" class="hero" data-tone="neutral">
         <p class="status-pill"><span class="dot" aria-hidden="true"></span><span id="status-label">Checking</span></p>
         <h1 id="status-title">Checking your connector…</h1>
         <p id="status-summary" class="lede"></p>
         <div class="actions">
-          <button id="primary-action" class="pill" type="button" disabled>Sync now</button>
+          <button id="primary-action" class="pill" type="button" disabled>Check again</button>
         </div>
         <p id="message" class="note" role="status" aria-live="polite"></p>
       </div>
 
-      <div id="connect-panel" class="panel connect hidden">
-        <h2>Sign in to Wealthsimple</h2>
-        <p class="panel-note">Your email and password go straight to Wealthsimple through your own deployment. They are never saved or shown to your AI.</p>
-        <form id="connect-form">
-          <div id="credential-fields">
-            <label>Email<input id="username" type="email" autocomplete="username" required maxlength="254"></label>
-            <label>Password<input id="password" type="password" autocomplete="current-password" required maxlength="1024"></label>
-          </div>
-          <label id="otp-field" class="hidden">Verification code
-            <input id="otp" inputmode="numeric" autocomplete="one-time-code" minlength="4" maxlength="20">
-            <span id="otp-hint" class="hint"></span>
-          </label>
-          <button id="connect-submit" class="pill wide" type="submit">Continue</button>
+      <div id="key-panel" class="panel connect hidden">
+        <h2 id="key-title">Add your Splitwise API key</h2>
+        <p class="panel-note">The key lets your connector use your Splitwise account. It is checked with Splitwise, then kept in your project's Secret Manager. Your AI apps never see it.</p>
+        <ol class="steps">
+          <li>Open your Splitwise apps page and choose Register your application.
+            <a class="pill small step-link" href="https://secure.splitwise.com/apps" target="_blank" rel="noopener">Open Splitwise apps</a></li>
+          <li>Give it any name, such as My AI connector, and any homepage URL, such as this page's address. Then save it.</li>
+          <li>On the app's page, choose Create API key, and copy the key.</li>
+        </ol>
+        <form id="key-form">
+          <label>API key<input id="api-key" type="password" autocomplete="off" spellcheck="false" required minlength="20" maxlength="200"></label>
+          <button id="key-submit" class="pill wide" type="submit">Save key</button>
+          <button id="key-cancel" class="link-button hidden" type="button">Cancel</button>
         </form>
       </div>
 
@@ -76,7 +76,7 @@
         <h2>AI apps</h2>
       </div>
       <div class="panel">
-        <p class="panel-note">Add this address to an AI app. It asks you to sign in with this Google account, then reads your saved data.</p>
+        <p class="panel-note">Add this address to an AI app. It asks you to sign in with this Google account, then reads and records expenses in your Splitwise.</p>
         <div class="copy-field">
           <code id="mcp-url">—</code>
           <button id="copy-url" class="pill small" type="button">Copy</button>
@@ -97,25 +97,20 @@
       </div>
 
       <div class="section-head">
-        <h2>Your data</h2>
+        <h2>Splitwise</h2>
         <div class="section-links">
-          <button id="toggle-amounts" class="link-button" type="button" aria-pressed="false">Show amounts</button>
-          <a id="open-firestore" class="link-button" target="_blank" rel="noopener">Open in Firestore ↗</a>
-          <button id="ws-signout" class="link-button danger hidden" type="button">Sign out of Wealthsimple</button>
+          <button id="key-replace" class="link-button" type="button">Replace key</button>
+          <button id="key-remove" class="link-button danger" type="button">Remove key</button>
         </div>
       </div>
-      <div class="tiles">
-        <article class="tile">
-          <p class="tile-kicker">Holdings<span class="kicker-note">Return since purchase</span></p>
-          <p class="total"><span id="holdings-total" class="figure">—</span><span class="figure-label" id="holdings-caption">across — positions</span></p>
-          <ul id="holdings" class="list"></ul>
-          <p class="tile-footer"><span id="portfolio-updated">Not synced yet</span><span id="portfolio-chip" class="chip">—</span></p>
-        </article>
-        <article class="tile">
-          <p class="tile-kicker">Recent activity</p>
-          <ul id="recent" class="list"></ul>
-          <p class="tile-footer"><span id="activity-updated">Not synced yet</span><span id="activity-chip" class="chip">—</span></p>
-        </article>
+      <div class="panel">
+        <dl class="facts">
+          <div><dt>Account</dt><dd id="fact-account">—</dd></div>
+          <div><dt>API key</dt><dd id="fact-key">—</dd></div>
+          <div><dt>Splitwise right now</dt><dd id="fact-live">—</dd></div>
+          <div><dt>Last answered your AI</dt><dd id="fact-last-ok">—</dd></div>
+          <div><dt>Last problem</dt><dd id="fact-last-error">—</dd></div>
+        </dl>
       </div>
 
       <div class="section-head">
@@ -131,37 +126,27 @@
     <section id="developer-view" class="view hidden" data-view="developer">
       <div class="hero compact">
         <h1>What your AI sees.</h1>
-        <p class="lede">The exact saved data your AI tools return. Viewing it never contacts Wealthsimple.</p>
+        <p class="lede">The exact output of your AI's read tools. Viewing it reads Splitwise and never changes anything.</p>
       </div>
 
-      <div class="panel split">
-        <div>
-          <h2>Sync one part</h2>
-          <p class="panel-note">Useful when checking a single data path.</p>
-          <div class="actions left">
-            <button id="refresh-portfolio" class="pill secondary" type="button">Sync portfolio</button>
-            <button id="refresh-activities" class="pill secondary" type="button">Sync activity</button>
-          </div>
-          <p id="developer-message" class="note" role="status" aria-live="polite"></p>
-        </div>
-        <div>
-          <h2>Deployment</h2>
-          <dl class="facts">
-            <div><dt>Version</dt><dd id="fact-version">—</dd></div>
-            <div><dt>Source code</dt><dd id="fact-source">—</dd></div>
-            <div><dt>Wealthsimple session</dt><dd id="fact-session">—</dd></div>
-            <div><dt>Last sync result</dt><dd id="fact-sync"><code>—</code></dd></div>
-            <div><dt>Activity sync result</dt><dd id="fact-activity"><code>—</code></dd></div>
-          </dl>
-        </div>
+      <div class="panel">
+        <h2>Deployment</h2>
+        <dl class="facts">
+          <div><dt>Version</dt><dd id="fact-version">—</dd></div>
+          <div><dt>Source code</dt><dd id="fact-source">—</dd></div>
+          <div><dt>Splitwise status code</dt><dd id="fact-state"><code>—</code></dd></div>
+          <div><dt>Response time</dt><dd id="fact-latency">—</dd></div>
+        </dl>
       </div>
 
       <div class="panel">
         <div class="panel-head">
           <h2>Tool output</h2>
           <div class="segmented" role="group" aria-label="Tool output">
-            <button id="preview-portfolio" type="button" aria-pressed="true">get_portfolio</button>
-            <button id="preview-activities" type="button" aria-pressed="false">list_activities</button>
+            <button type="button" data-preview="get_status" aria-pressed="true">get_status</button>
+            <button type="button" data-preview="list_groups" aria-pressed="false">list_groups</button>
+            <button type="button" data-preview="list_friends" aria-pressed="false">list_friends</button>
+            <button type="button" data-preview="list_expenses" aria-pressed="false">list_expenses</button>
           </div>
         </div>
         <pre id="preview-output" class="code">Loading…</pre>
@@ -175,13 +160,8 @@
     <div id="guide-body"></div>
   </dialog>
 
-     </div>
-      </div>
-    </section>
-  </main>
-
   <footer class="footer">
-    <span>Unofficial and self-hosted. Not affiliated with Wealthsimple.</span>
+    <span>Unofficial and self-hosted. Not affiliated with Splitwise.</span>
     <a id="source" class="hidden" target="_blank" rel="noopener">Source code on GitHub ↗</a>
   </footer>
   <script type="module" src="/assets/owner.js"></script>

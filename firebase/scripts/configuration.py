@@ -10,15 +10,11 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REGION = "us-east4"
 # One connector per project, so these names identify its resources; changing one strands them.
 NAMES = {
-    "portfolio_database": "(default)",
-    "auth_database": "mcp-auth",
-    "session_secret_id": "wealthsimple-session",
-    "sync_service_account": "portfolio-sync",
-    "mcp_service_account": "portfolio-mcp",
-    "mcp_service": "wealthsimple-mcp",
+    "auth_database": "(default)",
+    "api_key_secret_id": "splitwise-api-key",
+    "mcp_service_account": "splitwise-mcp",
+    "mcp_service": "splitwise-mcp",
 }
-VIEW_CURRENCY = "CAD"
-STALE_SECONDS = 25200
 
 
 def make_config(project_id, owner_email, region, project_number=None, firebase_web_config=None):
@@ -39,7 +35,6 @@ def make_config(project_id, owner_email, region, project_number=None, firebase_w
                                        for x in web.values())):
         raise ValueError("Firebase Web config must match this project")
     return {**NAMES, "project_id": project_id, "owner_email": owner_email, "region": region,
-            "view_currency": VIEW_CURRENCY, "stale_seconds": STALE_SECONDS,
             "project_number": None if project_number is None else str(project_number),
             "firebase_web_config": web}
 
@@ -48,19 +43,9 @@ def email(cfg, role):
     return cfg[role + "_service_account"] + "@" + cfg["project_id"] + ".iam.gserviceaccount.com"
 
 
-def function_env(cfg):
-    return {"CONNECTOR_REGION": cfg["region"], "SESSION_SECRET_ID": cfg["session_secret_id"],
-            "PORTFOLIO_DATABASE": cfg["portfolio_database"],
-            "VIEW_CURRENCY": cfg["view_currency"], "STALE_SECONDS": str(cfg["stale_seconds"]),
-            "SYNC_SERVICE_ACCOUNT": email(cfg, "sync")}
-
-
-def mcp_env(cfg, refresh_url="", reconnect_url=""):
+def mcp_env(cfg):
     base = f'https://{cfg["mcp_service"]}-{cfg["project_number"]}.{cfg["region"]}.run.app'
     return {"MCP_BASE_URL": base, "GOOGLE_CLOUD_PROJECT": cfg["project_id"],
             "MCP_OWNER_EMAIL": cfg["owner_email"].casefold(), "MCP_AUTH_DATABASE": cfg["auth_database"],
-            "PORTFOLIO_DATABASE": cfg["portfolio_database"],
-            "STALE_SECONDS": str(cfg["stale_seconds"]),
-            "FIREBASE_WEB_CONFIG": json.dumps(cfg["firebase_web_config"], separators=(",", ":")),
-            "REFRESH_FUNCTION_URL": refresh_url,
-            "RECONNECT_FUNCTION_URL": reconnect_url}
+            "API_KEY_SECRET_ID": cfg["api_key_secret_id"],
+            "FIREBASE_WEB_CONFIG": json.dumps(cfg["firebase_web_config"], separators=(",", ":"))}

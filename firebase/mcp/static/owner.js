@@ -5,7 +5,7 @@ import {getAuth, GoogleAuthProvider, signInWithPopup, browserSessionPersistence,
 
 const el = id => document.getElementById(id);
 const VIEWS = ["overview", "developer"];
-let auth, user, status, connectMode = null, showAmounts = false, busy = false;
+let auth, user, status, keyFormOpen = false, busy = false;
 
 // ---------- Small helpers ----------
 
@@ -38,107 +38,30 @@ function monthDay(value) {
   return new Intl.DateTimeFormat(undefined, {month: "short", day: "numeric", year}).format(date);
 }
 
-function monthYear(value) {
-  const date = value ? new Date(value) : null;
-  return date && !Number.isNaN(date.getTime())
-    ? new Intl.DateTimeFormat(undefined, {month: "short", year: "numeric"}).format(date) : null;
-}
-
-// Unknown stays unknown: never show a missing count as 0.
-const count = value => Number.isInteger(value) ? value.toLocaleString() : "—";
-
-const HIDDEN = "••••";
-const amount = value => value && Number.isFinite(Number(value.amount)) ? Number(value.amount) : null;
-
-function currency(value, code) {
-  if (!showAmounts) return HIDDEN;
-  if (value === null) return "—";
-  return new Intl.NumberFormat(undefined, {style: "currency", currency: code || "CAD",
-    maximumFractionDigits: Math.abs(value) >= 1000 ? 0 : 2}).format(value);
-}
-
-const percent = (value, signed = false) => value === null || !Number.isFinite(value) ? "—"
-  : new Intl.NumberFormat(undefined, {style: "percent", maximumFractionDigits: 1,
-      signDisplay: signed ? "exceptZero" : "auto"}).format(value);
-
-function shortDate(value) {
-  const date = value ? new Date(value) : null;
-  return date && !Number.isNaN(date.getTime())
-    ? new Intl.DateTimeFormat(undefined, {month: "short", day: "numeric"}).format(date) : "";
-}
-
-function listItem(title, detail, value, tone = "") {
-  const row = document.createElement("li");
-  const text = document.createElement("div");
-  const strong = document.createElement("strong");
-  strong.textContent = title;
-  const small = document.createElement("span");
-  small.textContent = detail;
-  text.append(strong, small);
-  const figure = document.createElement("span");
-  figure.className = "value " + tone;
-  figure.textContent = value;
-  row.append(text, figure);
-  return row;
-}
-
-function emptyItem(text) {
-  const row = document.createElement("li");
-  row.className = "muted";
-  row.textContent = text;
-  return row;
-}
-
 function say(id, text, tone = "neutral") {
   el(id).textContent = text;
   el(id).dataset.tone = tone;
 }
 
-function chip(id, text, tone = "") {
-  el(id).textContent = text;
-  el(id).className = "chip " + tone;
-}
+// ---------- Plain-language copy for result codes ----------
 
-// ---------- Plain-language copy for internal result codes ----------
-
-function explainSyncError(code) {
-  if (!code) return null;
-  if (code === "rate_limited_stop") return "Wealthsimple asked the connector to slow down. Try again in a few minutes.";
-  if (code === "sync_already_running") return "Another sync was running at the same time.";
-  if (code === "sync_deadline_reached") return "The sync took too long and stopped.";
-  if (/shape_changed|graphql|_http_failed|not_json|response_invalid|data_missing/.test(code))
-    return "Wealthsimple answered in an unexpected format. The connector may need an update.";
-  return "The last sync didn't finish.";
-}
-
-const REFRESH_COPY = {
-  refresh_succeeded: ["Your data is up to date.", "success"],
-  refresh_partial: ["Updated. Some activity couldn't be read and was skipped.", "warning"],
-  refresh_continues: ["Your history is still loading. It picks up again on the next sync.", "neutral"],
-  refresh_cooldown: ["Your portfolio was synced a few minutes ago.", "neutral"],
-  refresh_reused: ["Your activity was synced a few minutes ago.", "neutral"],
-  saved_page: ["Your data is up to date.", "success"],
-  sync_already_running: ["A sync is already running. Try again in a few minutes.", "warning"],
-  refresh_failed: ["The sync didn't finish. Your saved data is unchanged.", "danger"],
-  refresh_result_unknown: ["The sync may not have finished. Your saved data is unchanged.", "danger"],
-  reconnect_required: ["Wealthsimple signed the connector out. Reconnect to resume updates.", "danger"],
+// What each Splitwise outcome means for the owner.
+const SPLITWISE_COPY = {
+  connected: "Answering",
+  key_missing: "No API key yet",
+  key_rejected: "Splitwise doesn't accept the key",
+  rate_limited: "Splitwise asked the connector to slow down",
+  splitwise_unavailable: "Splitwise isn't answering",
+  response_invalid: "Splitwise answered in an unexpected format",
+  forbidden: "Splitwise refused the request",
 };
 
-// Where Wealthsimple sent the code, from its challenge; "app" is an authenticator app.
-function otpHint({method, hint}) {
-  if (method === "app") return "Enter the 6-digit code from your authenticator app.";
-  if (method === "sms" || method === "recovery_sms")
-    return hint ? `Enter the code Wealthsimple texted to the number ending in ${hint}.`
-      : "Enter the code Wealthsimple texted to your phone.";
-  if (method === "email") return "Enter the code Wealthsimple emailed you.";
-  return "Enter the code from your authenticator app, or the one Wealthsimple texted or emailed you.";
-}
-
-const CONNECT_COPY = {
-  login_rejected: "Wealthsimple didn't accept that email and password.",
-  rate_limited_stop: "Wealthsimple is limiting sign-in attempts. Wait a few minutes and try again.",
-  sync_already_running: "A sync is running. Try again when it finishes.",
-  reconnect_input_invalid: "Check the email, password and code.",
+const KEY_COPY = {
+  key_saved: ["Key saved. Your AI apps can use Splitwise now.", "success"],
+  key_invalid: ["That doesn't look like a Splitwise API key. Copy the whole key and try again.", "danger"],
+  key_rejected: ["Splitwise didn't accept that key. Create a new one and try again.", "danger"],
+  rate_limited: ["Splitwise is limiting requests. Wait a minute and try again.", "warning"],
+  splitwise_unavailable: ["Splitwise isn't answering right now. Nothing was saved; try again later.", "warning"],
 };
 
 // ---------- Views and routing ----------
@@ -154,7 +77,6 @@ function showView() {
   for (const tab of el("tabs").querySelectorAll("a"))
     tab.setAttribute("aria-current", tab.dataset.view === name ? "page" : "false");
   if (name === "developer" && user) preview(previewTarget);
-  if (name === "overview" && status) fitRecent();
   window.scrollTo({top: 0});
 }
 
@@ -174,77 +96,65 @@ function appNames(apps) {
   return names.length > 2 ? names.length + " apps" : names.join(" and ");
 }
 
-// The page answers one question first: can my AI read my latest data?
-function overallState(portfolio, activities, apps) {
-  if (portfolio.connection_state === "not_connected") return {
-    tone: "neutral", label: "Setup", title: "Connect Wealthsimple.", action: "connect",
-    summary: "Sign in once. The connector then keeps a private, read-only copy of your portfolio for your AI apps.",
+// The page answers one question first: can my AI use my Splitwise?
+function overallState(splitwise, apps) {
+  if (splitwise.state === "key_missing") return {
+    tone: "neutral", label: "Setup", title: "Add your Splitwise API key.", action: "key",
+    summary: "Your AI apps use Splitwise through this key. It takes a minute to create one.",
   };
-  if (portfolio.reconnect_required) return {
-    tone: "danger", label: "Action required", title: "Reconnect Wealthsimple.", action: "reconnect",
-    summary: "Your saved data is still available to your AI apps. Reconnect to resume updates.",
+  if (splitwise.state === "key_rejected") return {
+    tone: "danger", label: "Action required", title: "Replace your Splitwise API key.", action: "key",
+    summary: "Splitwise no longer accepts the saved key, so your AI apps can't use Splitwise.",
   };
-  const hasPortfolio = portfolio.snapshot_available === true;
-  const hasActivity = activities.available === true;
-  if (!hasPortfolio && !hasActivity) return {
-    tone: "neutral", label: "Ready", title: "Run your first sync.", action: "sync",
-    summary: "Wealthsimple is connected. Sync to save your portfolio and activity.",
+  if (splitwise.state !== "connected") return {
+    tone: "warning", label: "Needs attention", title: "Splitwise isn't answering right now.", action: "check",
+    summary: (SPLITWISE_COPY[splitwise.state] || "Something went wrong") + ". Your AI apps will try again when you ask.",
   };
-  const problem = explainSyncError(portfolio.last_sync_error || activities.error);
-  if (problem) return {
-    tone: "warning", label: "Needs attention", title: "The last sync didn't finish.", action: "sync",
-    summary: problem + " Your saved data is still available.",
-  };
-  const updated = ago(portfolio.fetched_at);
-  // Age alone isn't a problem: your AI asks for fresh data whenever it reads.
-  if (!hasPortfolio || !hasActivity) return {
-    tone: "warning", label: "Incomplete", title: "Part of your data is missing.", action: "sync",
-    summary: "Sync to save both your portfolio and your activity.",
-  };
+  const name = splitwise.user?.first_name;
   if (!apps.length) return {
     tone: "neutral", label: "Almost ready", title: "Connect an AI app.", action: "guide",
-    summary: `Your data is saved, last synced ${updated || "recently"}. Add it to an AI app to start asking about it.`,
+    summary: `Splitwise is connected${name ? " as " + name : ""}. Add it to an AI app to start asking about your expenses.`,
   };
   const used = apps.map(app => app.last_used_at).filter(Boolean).sort().at(-1);
   return {
-    tone: "success", label: "Ready", title: `${appNames(apps)} can read your portfolio.`, action: "sync",
-    summary: `Data synced ${updated || "recently"}.` + (used ? ` Last used ${ago(used)}.` : ""),
+    tone: "success", label: "Ready", title: `${appNames(apps)} can use your Splitwise.`, action: "check",
+    summary: `Connected${name ? " as " + name : ""}.` + (used ? ` Last used ${ago(used)}.` : ""),
   };
 }
 
 function renderStatus() {
-  const portfolio = status.portfolio || {};
-  const activities = status.activities || {};
+  const splitwise = status.splitwise || {};
+  const health = status.health || {};
   const apps = status.apps || [];
-  const state = overallState(portfolio, activities, apps);
+  const state = overallState(splitwise, apps);
   el("overview-hero").dataset.tone = state.tone;
   el("status-label").textContent = state.label;
   el("status-title").textContent = state.title;
   el("status-summary").textContent = state.summary;
-  el("primary-action").disabled = busy;  // a status reload mid-operation must not unlock it
+  el("primary-action").disabled = busy;
   el("primary-action").dataset.action = state.action;
-  el("primary-action").textContent = state.action === "guide" ? "Connect an AI app" : "Sync now";
-  // When a sign-in is needed, the form itself is the one action on the page.
-  const needsSignIn = ["connect", "reconnect"].includes(state.action);
-  el("primary-action").classList.toggle("hidden", needsSignIn);
-  setConnectMode(needsSignIn ? state.action : null);
-  el("ws-signout").classList.toggle("hidden", portfolio.connection_state !== "connected");
+  el("primary-action").textContent = state.action === "guide" ? "Connect an AI app" : "Check again";
+  // When a key is needed, the form itself is the one action on the page.
+  const needsKey = state.action === "key";
+  el("primary-action").classList.toggle("hidden", needsKey);
+  showKeyForm(needsKey || keyFormOpen, !needsKey);
+  el("key-title").textContent = splitwise.state === "key_missing" ? "Add your Splitwise API key"
+    : "Replace your Splitwise API key";
+  el("key-remove").classList.toggle("hidden", !splitwise.key_saved_at);
+  el("key-replace").classList.toggle("hidden", !splitwise.key_saved_at);
   el("apps-list").replaceChildren(...(apps.length ? apps.map(appRow) : [emptyRow("No apps are connected yet.")]));
 
-  el("portfolio-updated").textContent = portfolio.snapshot_available
-    ? "Updated " + (ago(portfolio.fetched_at) || "at an unknown time") : "Not synced yet";
-  if (!portfolio.snapshot_available) chip("portfolio-chip", "No data");
-  else if (portfolio.last_sync_error) chip("portfolio-chip", "Needs attention", "warning");
-  else chip("portfolio-chip", "Current", "success");
-
-  const since = monthYear(activities.earliest_saved_occurred_at);
-  el("activity-updated").textContent = activities.available
-    ? count(activities.rows_processed) + " records" + (since ? " since " + since : "") : "Not synced yet";
-  if (!activities.available) chip("activity-chip", "No data");
-  else if (activities.error) chip("activity-chip", "Needs attention", "warning");
-  else if (activities.coverage_complete === false) chip("activity-chip", "Partial", "warning");
-  else chip("activity-chip", "Complete", "success");
-  renderData();
+  const person = splitwise.user;
+  el("fact-account").textContent = person
+    ? [person.first_name, person.last_name].filter(Boolean).join(" ") + (person.email ? ` (${person.email})` : "")
+    : "—";
+  el("fact-key").textContent = splitwise.key_saved_at ? "Saved " + monthDay(splitwise.key_saved_at) : "Not added";
+  el("fact-live").textContent = (SPLITWISE_COPY[splitwise.state] || splitwise.state || "—")
+    + (splitwise.state === "connected" && Number.isFinite(splitwise.latency_ms) ? ` · ${splitwise.latency_ms} ms` : "");
+  el("fact-last-ok").textContent = ago(health.last_ok_at) || "Not yet";
+  el("fact-last-error").textContent = health.last_error_code
+    ? `${SPLITWISE_COPY[health.last_error_code] || health.last_error_code}, ${ago(health.last_error_at)}`
+    : "None";
 
   const diagnostics = status.diagnostics || {};
   el("mcp-url").textContent = diagnostics.mcp_endpoint || "—";
@@ -252,7 +162,7 @@ function renderStatus() {
   if (diagnostics.project_id) {
     el("project-id").textContent = diagnostics.project_id;
     el("project").classList.remove("hidden");
-    document.title = diagnostics.project_id + " · AI connector for your Wealthsimple";
+    document.title = diagnostics.project_id + " · AI connector for Splitwise";
     renderResources(diagnostics);
   }
   el("fact-version").textContent = [diagnostics.connector_version, diagnostics.commit?.slice(0, 7),
@@ -264,216 +174,96 @@ function renderStatus() {
     el("fact-source").replaceChildren(external(github, diagnostics.repository + " ↗"));
   }
   checkForUpdate(diagnostics.connector_version, diagnostics.repository);
-  el("fact-session").textContent = {connected: "Connected", not_connected: "Not connected",
-    reconnect_required: "Signed out"}[portfolio.connection_state] || "Unknown";
-  el("fact-sync").firstElementChild.textContent = portfolio.last_sync_error || portfolio.last_sync_status || "—";
-  el("fact-activity").firstElementChild.textContent = activities.error || activities.sync_status || "—";
+  el("fact-state").firstElementChild.textContent = splitwise.state || "—";
+  el("fact-latency").textContent = Number.isFinite(splitwise.latency_ms) ? splitwise.latency_ms + " ms" : "—";
 }
-
-// Holdings: weights and returns by default; amounts only when asked for.
-function holdings(positions) {
-  const bySymbol = new Map();
-  for (const position of positions) {
-    const symbol = position.symbol || position.security_type || "Other";
-    const item = bySymbol.get(symbol) || {symbol, value: 0, book: 0, gain: 0, hasBook: true,
-      currency: position.reported_market_value?.currency};
-    item.value += amount(position.reported_market_value) || 0;
-    const book = amount(position.reported_book_value), gain = amount(position.reported_unrealized_returns);
-    if (book === null || gain === null) item.hasBook = false;
-    else { item.book += book; item.gain += gain; }
-    bySymbol.set(symbol, item);
-  }
-  const items = [...bySymbol.values()].sort((a, b) => b.value - a.value);
-  const total = items.reduce((sum, item) => sum + item.value, 0);
-  // Weights only make sense when every value is in the same currency.
-  const oneCurrency = new Set(items.map(item => item.currency)).size <= 1;
-  return {items, total, currency: items[0]?.currency, oneCurrency};
-}
-
-const ACTIVITY_VERBS = {DIY_BUY: "Bought", MANAGED_BUY: "Bought", DIY_SELL: "Sold", MANAGED_SELL: "Sold",
-  DIVIDEND: "Dividend", INTEREST: "Interest", DEPOSIT: "Deposit", WITHDRAWAL: "Withdrawal",
-  INTERNAL_TRANSFER: "Transfer", SPEND: "Purchase", CREDIT_CARD: "Card"};
-const words = text => (text || "").toLowerCase().replaceAll("_", " ").replace(/^./, c => c.toUpperCase());
-
-function activityTitle(row) {
-  const verb = ACTIVITY_VERBS[row.type] || words(row.sub_type || row.type) || "Activity";
-  const subject = row.asset_symbol || row.merchant || row.aft_originator_name;
-  return subject ? verb + " · " + subject : verb;
-}
-
-function renderData() {
-  const {items, total, currency: code, oneCurrency} = holdings(status.positions || []);
-  el("toggle-amounts").textContent = showAmounts ? "Hide amounts" : "Show amounts";
-  el("toggle-amounts").setAttribute("aria-pressed", String(showAmounts));
-  el("holdings-total").textContent = items.length ? currency(total, code) : "—";
-  el("holdings-caption").textContent = items.length
-    ? `across ${count(status.portfolio?.position_count)} positions` : "No holdings saved yet";
-  const top = items.slice(0, 6).map(item => {
-    const change = item.hasBook && item.book ? item.gain / item.book : null;
-    const row = listItem(item.symbol, showAmounts ? currency(item.value, item.currency)
-      : oneCurrency && total ? percent(item.value / total) + " of holdings" : "",
-      percent(change, true), change > 0 ? "up" : change < 0 ? "down" : "");
-    if (oneCurrency && total) row.style.setProperty("--weight", (item.value / total * 100).toFixed(1) + "%");
-    return row;
-  });
-  if (items.length > 6) top.push(emptyItem(`and ${items.length - 6} more`));
-  el("holdings").replaceChildren(...(top.length ? top : [emptyItem("Sync to see your holdings.")]));
-
-  const recent = (status.recent_activities || []).map(row => {
-    const value = amount(row);
-    const sign = row.amount_sign === "negative" ? -1 : 1;
-    return listItem(activityTitle(row),
-      [row.account_nickname, shortDate(row.occurred_at)].filter(Boolean).join(" · "),
-      value === null ? "" : currency(sign * value, row.currency),
-      showAmounts && value !== null && sign > 0 ? "up" : "");
-  });
-  el("recent").replaceChildren(...(recent.length ? recent : [emptyItem("Sync to see recent activity.")]));
-  fitRecent();
-}
-
-// Show as many recent rows as fit beside Holdings without making the tiles taller.
-function fitRecent() {
-  const rows = [...el("recent").children];
-  const holdingsTile = el("holdings").closest(".tile"), recentTile = el("recent").closest(".tile");
-  const least = holdingsTile.offsetTop === recentTile.offsetTop ? 3 : 5;
-  rows.forEach((row, index) => { row.hidden = index >= least; });
-  if (least === 5 || !holdingsTile.offsetHeight) return;
-  const height = holdingsTile.offsetHeight;
-  for (const row of rows.slice(least)) {
-    row.hidden = false;
-    if (holdingsTile.offsetHeight > height) { row.hidden = true; break; }
-  }
-}
-window.addEventListener("resize", () => { if (status) fitRecent(); });
-
-// Two clicks: the first asks, the second destroys the stored Wealthsimple session.
-el("ws-signout").onclick = async () => {
-  const button = el("ws-signout");
-  if (!button.dataset.confirm) {
-    button.dataset.confirm = "1";
-    button.textContent = "Click again to sign out";
-    return;
-  }
-  delete button.dataset.confirm;
-  button.textContent = "Sign out of Wealthsimple";
-  button.disabled = true;
-  try {
-    const {result} = await api("/owner/signout");
-    await loadStatus();
-    say("message", result === "signed_out"
-      ? "Signed out of Wealthsimple. Your saved data stays; sign in again any time."
-      : "Couldn't sign out. Try again.", result === "signed_out" ? "success" : "danger");
-    window.scrollTo({top: 0, behavior: "smooth"});
-  } catch (error) {
-    if (error instanceof OwnerSessionExpired) return expireSession();
-    say("message", "Couldn't sign out. Try again.", "danger");
-  } finally {
-    button.disabled = false;
-  }
-};
-
-el("toggle-amounts").onclick = () => {
-  showAmounts = !showAmounts;
-  if (status) renderData();
-};
 
 async function loadStatus() {
   status = await api("/owner/status");
   renderStatus();
 }
 
-function setConnectMode(mode) {
-  if (mode === connectMode) return;
-  connectMode = mode;
-  el("connect-panel").classList.toggle("hidden", !mode);
-  resetConnectForm();
-}
-
-function resetConnectForm() {
-  el("connect-form").reset();
-  el("credential-fields").classList.remove("hidden");
-  el("otp-field").classList.add("hidden");
-  el("otp").required = false;
-  el("connect-submit").textContent = "Continue";
-}
-
-// One operation at a time: sign-in, sync and sign-out controls stay disabled until it ends.
+// One operation at a time: these controls stay disabled until it ends.
 function setBusy(value) {
   busy = value;
-  for (const id of ["primary-action", "connect-submit", "refresh-portfolio", "refresh-activities",
-    "ws-signout"])
-    el(id).disabled = value;
+  for (const id of ["primary-action", "key-submit", "key-remove", "key-replace"]) el(id).disabled = value;
 }
 
-async function sync(targets, messageId = "message") {
+function showKeyForm(show, cancellable) {
+  el("key-panel").classList.toggle("hidden", !show);
+  el("key-cancel").classList.toggle("hidden", !cancellable);
+  if (!show) el("key-form").reset();
+}
+
+el("primary-action").onclick = async () => {
+  if (el("primary-action").dataset.action === "guide") return el("apps").scrollIntoView({behavior: "smooth"});
   setBusy(true);
-  let last = "refresh_succeeded";
+  say("message", "Checking Splitwise…");
   try {
-    for (const target of targets) {
-      say(messageId, target === "portfolio" ? "Syncing your portfolio…" : "Syncing your activity…");
-      // A long first activity sync runs in rounds of about three minutes; keep going until done.
-      for (let round = 0; round < 30; round++) {
-        const result = await api("/owner/refresh", {target});
-        last = result.result;
-        if (last !== "refresh_continues") break;
-        const since = monthYear(result.earliest_occurred_at);
-        say(messageId, `Saving your activity history: ${count(result.rows_processed)} so far`
-          + (since ? `, back to ${since}…` : "…"));
-      }
-      if (!["refresh_succeeded", "refresh_cooldown", "refresh_partial"].includes(last)) break;
-    }
     await loadStatus();
-    say(messageId, ...(REFRESH_COPY[last] || REFRESH_COPY.refresh_result_unknown));
+    say("message", "");
   } catch (error) {
     if (error instanceof OwnerSessionExpired) return expireSession();
-    say(messageId, "The sync couldn't start. Your saved data is unchanged.", "danger");
+    say("message", "Your connector's status couldn't be loaded. Try again.", "danger");
   } finally {
     setBusy(false);
   }
-}
-
-el("primary-action").onclick = () => {
-  const action = el("primary-action").dataset.action;
-  if (action === "guide") el("apps").scrollIntoView({behavior: "smooth"});
-  else sync(["portfolio", "activities"]);
 };
 
-el("connect-form").onsubmit = async event => {
+el("key-form").onsubmit = async event => {
   event.preventDefault();
   setBusy(true);
-  let syncNext = false;
-  say("message", "Signing in to Wealthsimple…");
+  say("message", "Checking the key with Splitwise…");
   try {
-    const reply = await api("/owner/reconnect", {username: el("username").value,
-      password: el("password").value, otp: el("otp").value || null});
-    const result = reply.result;
-    if (result === "mfa_required") {
-      el("otp-hint").textContent = otpHint(reply);
-      el("credential-fields").classList.add("hidden");
-      el("otp-field").classList.remove("hidden");
-      el("otp").required = true;
-      el("otp").focus();
-      el("connect-submit").textContent = "Verify";
-      say("message", "");
-    } else if (result === "reconnect_succeeded") {
-      resetConnectForm();
-      await loadStatus();
-      syncNext = true;
-    } else {
-      if (result === "login_rejected") resetConnectForm();
-      say("message", CONNECT_COPY[result] || "Wealthsimple sign-in is unavailable right now.", "danger");
-    }
+    const {result} = await api("/owner/key", {api_key: el("api-key").value});
+    el("api-key").value = "";
+    if (result === "key_saved") keyFormOpen = false;
+    await loadStatus();
+    say("message", ...(KEY_COPY[result] || ["The key couldn't be checked. Nothing was saved.", "danger"]));
   } catch (error) {
     if (error instanceof OwnerSessionExpired) return expireSession();
-    el("password").value = "";
-    say("message", "Sign-in couldn't be completed. Nothing was saved.", "danger");
+    say("message", "The key couldn't be saved. Try again.", "danger");
   } finally {
-    if (!syncNext) setBusy(false);
+    setBusy(false);
   }
-  // Start syncing without another click: the first time nothing is saved yet, and after a
-  // reconnect the saved data stopped updating while signed out. The controls stay disabled
-  // from sign-in through the sync, which shows its progress and releases them once at the end.
-  if (syncNext) await sync(["portfolio", "activities"]);
+  window.scrollTo({top: 0, behavior: "smooth"});
+};
+
+el("key-replace").onclick = () => {
+  keyFormOpen = true;
+  renderStatus();
+  el("key-panel").scrollIntoView({behavior: "smooth"});
+  el("api-key").focus();
+};
+
+el("key-cancel").onclick = () => {
+  keyFormOpen = false;
+  renderStatus();
+};
+
+// Two clicks: the first asks, the second destroys the saved key.
+el("key-remove").onclick = async () => {
+  const button = el("key-remove");
+  if (!button.dataset.confirm) {
+    button.dataset.confirm = "1";
+    button.textContent = "Click again to remove";
+    return;
+  }
+  delete button.dataset.confirm;
+  button.textContent = "Remove key";
+  setBusy(true);
+  try {
+    await api("/owner/key/remove");
+    await loadStatus();
+    say("message", "Key removed. Your AI apps can't use Splitwise until you add one again. "
+      + "To cancel the key itself, delete it on your Splitwise apps page.", "success");
+    window.scrollTo({top: 0, behavior: "smooth"});
+  } catch (error) {
+    if (error instanceof OwnerSessionExpired) return expireSession();
+    say("message", "Couldn't remove the key. Try again.", "danger");
+  } finally {
+    setBusy(false);
+  }
 };
 
 // ---------- AI apps ----------
@@ -579,21 +369,21 @@ function guides() {
     chatgpt: {title: "Connect ChatGPT", steps: [
       {text: "Open Plugins in ChatGPT on the web.",
         href: CHATGPT_PLUGINS, label: "Open ChatGPT Plugins"},
-      "Choose Add, then Create MCP App. Name it Wealthsimple.",
+      "Choose Add, then Create MCP App. Name it Splitwise.",
       {text: "Under Connection, keep Server URL and paste this address. Leave Authentication on OAuth.",
         copy: d.mcp_endpoint},
       "Tick I understand and want to continue, then choose Create.",
       "When a sign-in window opens, choose this Google account and allow access.",
-      "On the plugin's page, choose Try in chat. Later, type @Wealthsimple in any chat to use it.",
+      "On the plugin's page, choose Try in chat. Later, type @Splitwise in any chat to use it.",
     ], note: "No Create MCP App under Add? Turn on Developer mode in ChatGPT's settings first. ChatGPT renames its menus from time to time; look for the closest match."},
     claude: {title: "Connect Claude", steps: [
       {text: "Open Connectors in Claude on the web.",
         href: CLAUDE_CONNECTORS, label: "Open Claude Connectors"},
-      "Choose +, then Add custom connector. Name it Wealthsimple.",
+      "Choose +, then Add custom connector. Name it Splitwise.",
       {text: "Paste this address as the server URL, then continue.", copy: d.mcp_endpoint},
       "Keep the detected settings: Sign in now, and Register automatically. Leave Request headers empty, then choose Add.",
       "When a sign-in window opens, choose this Google account and allow access.",
-      "In a chat, make sure Wealthsimple is turned on under + and Connectors, then ask about your portfolio.",
+      "In a chat, make sure Splitwise is turned on under + and Connectors, then ask about your expenses.",
     ], note: "Claude renames its menus from time to time; look for the closest match."},
     gemini: {title: "Connect Gemini", steps: [
       {text: "Open Apps in Gemini Spark on the web.",
@@ -601,7 +391,7 @@ function guides() {
       {text: "Choose Add a custom app, and paste this address as the MCP server URL.", copy: d.mcp_endpoint},
       "Leave Client ID and Client secret empty, then continue.",
       "When a sign-in window opens, choose this Google account and allow access.",
-      "In a Spark task, type @ and choose Wealthsimple, then ask about your portfolio.",
+      "In a Spark task, type @ and choose Splitwise, then ask about your expenses.",
     ], note: "Gemini renames its menus from time to time; look for the closest match."},
     update: {title: `Update to ${latestRelease?.version}`, steps: [
       {text: "Open Cloud Shell with the latest code. Sign in with the Google account that owns this project if asked.",
@@ -610,7 +400,7 @@ function guides() {
         label: "Open Cloud Shell"},
       {text: "Paste this into the terminal and press Enter:",
         copy: `firebase/scripts/bootstrap.sh ${d.project_id} ${user?.email}`},
-      "Type y when asked. It takes about 10 minutes. Your data, Wealthsimple sign-in and AI app connections stay as they are.",
+      "Type y when asked. It takes about 5 minutes. Your API key and AI app connections stay as they are.",
     ], note: "Updating only deploys new code into your own project. You can read every change first under What's new."},
   };
 }
@@ -618,27 +408,20 @@ function guides() {
 function openGuide(name) {
   const guide = guides()[name];
   el("guide-title").textContent = guide.title;
-  const body = [];
-  const section = steps => {
-    if (!steps.length) return;
-    const list = document.createElement("ol");
-    list.className = "steps";
-    for (const step of steps) {
-      const {text, copy, href, label} = typeof step === "string" ? {text: step} : step;
-      const item = document.createElement("li");
-      item.append(text);
-      if (copy) item.append(copyField(copy));
-      if (href) item.append(external(href, label, "pill small step-link"));
-      list.append(item);
-    }
-    body.push(list);
-  };
-  section(guide.steps);
+  const list = document.createElement("ol");
+  list.className = "steps";
+  for (const step of guide.steps) {
+    const {text, copy, href, label} = typeof step === "string" ? {text: step} : step;
+    const item = document.createElement("li");
+    item.append(text);
+    if (copy) item.append(copyField(copy));
+    if (href) item.append(external(href, label, "pill small step-link"));
+    list.append(item);
+  }
   const note = document.createElement("p");
   note.className = "panel-note";
   note.textContent = guide.note;
-  body.push(note);
-  el("guide-body").replaceChildren(...body);
+  el("guide-body").replaceChildren(list, note);
   el("guide").showModal();
 }
 
@@ -686,11 +469,10 @@ function renderResources(d) {
   const [label, region] = new URL(d.mcp_endpoint).hostname.split(".");
   const service = label.replace(/-\d+$/, "");
   const rows = [
-    ["Your saved data", "Firestore database with your portfolio and activity", database(d.portfolio_database)],
-    ["Functions", "Private sync, sign-in, and a twice-daily sign-in refresh", `${firebase}/functions`],
-    ["This console and MCP", "The Cloud Run service your AI apps talk to", cloud(`run/detail/${region}/${service}/metrics`)],
-    ["Wealthsimple session", "Secret Manager; only the private functions can read it", cloud("security/secret-manager")],
-    ["Logs", "What every part has been doing", cloud("logs/query")],
+    ["This dashboard and MCP", "The Cloud Run service your AI apps talk to", cloud(`run/detail/${region}/${service}/metrics`)],
+    ["Splitwise API key", "Secret Manager; only the connector can read it", cloud(`security/secret-manager/secret/${d.api_key_secret}/versions`)],
+    ["AI app sign-ins", "Firestore database with OAuth grants; no Splitwise data", database(d.auth_database)],
+    ["Logs", "What the connector has been doing", cloud("logs/query")],
     ["Usage and billing", "What this project costs on the Blaze plan", `${firebase}/usage`],
   ];
   el("resources").replaceChildren(...rows.map(([title, detail, href]) => {
@@ -705,32 +487,28 @@ function renderResources(d) {
     return row;
   }));
   el("project").href = `${firebase}/overview`;
-  el("open-firestore").href = database(d.portfolio_database);
 }
 
 // ---------- Developer ----------
 
-let previewTarget = "portfolio";
+let previewTarget = "get_status";
 
 async function preview(target) {
   previewTarget = target;
-  for (const name of ["portfolio", "activities"])
-    el("preview-" + name).setAttribute("aria-pressed", String(name === target));
+  for (const button of document.querySelectorAll("[data-preview]"))
+    button.setAttribute("aria-pressed", String(button.dataset.preview === target));
   const output = el("preview-output");
   output.textContent = "Loading…";
   try {
     output.textContent = JSON.stringify(await api("/owner/preview", {target}), null, 2);
   } catch (error) {
     if (error instanceof OwnerSessionExpired) return expireSession();
-    output.textContent = error.message === "no_snapshot" || error.message === "no_activity_snapshot"
-      ? "Nothing is saved yet. Run a sync first." : "The preview couldn't be loaded.";
+    output.textContent = "The preview couldn't be loaded.";
   }
 }
 
-el("preview-portfolio").onclick = () => preview("portfolio");
-el("preview-activities").onclick = () => preview("activities");
-el("refresh-portfolio").onclick = () => sync(["portfolio"], "developer-message");
-el("refresh-activities").onclick = () => sync(["activities"], "developer-message");
+for (const button of document.querySelectorAll("[data-preview]"))
+  button.onclick = () => preview(button.dataset.preview);
 
 // ---------- Sign-in ----------
 
@@ -755,8 +533,8 @@ async function expireSession(text = "Your sign-in expired. Sign in again to cont
 
 function signedOut() {
   user = status = null;
-  connectMode = null;
-  el("connect-panel").classList.add("hidden");
+  keyFormOpen = false;
+  el("key-panel").classList.add("hidden");
   el("project").classList.add("hidden");
   showSignedIn(false);
   el("signin").disabled = false;

@@ -1,10 +1,10 @@
-"""Explicit deployment configuration. No portfolio or Wealthsimple credentials."""
+"""Explicit deployment configuration. No Splitwise credentials."""
 from dataclasses import dataclass
 import json
 import os
 from urllib.parse import urlsplit
 
-SCOPE = "portfolio.read"
+SCOPE = "splitwise"
 
 
 @dataclass(frozen=True)
@@ -13,12 +13,9 @@ class Config:
     project_id: str
     owner_email: str
     firebase_config: dict
-    database: str = "mcp-auth"
+    database: str = "(default)"
     test_redirects: tuple[str, ...] = ()
-    portfolio_database: str = "(default)"
-    stale_seconds: int = 25200
-    refresh_url: str = ""
-    reconnect_url: str = ""
+    api_key_secret: str = "splitwise-api-key"
     scope: str = SCOPE
 
     @property
@@ -38,19 +35,5 @@ class Config:
         public = json.loads(os.environ["FIREBASE_WEB_CONFIG"])
         if public.get("projectId") != project or not public.get("apiKey"):
             raise ValueError("Firebase configuration mismatch")
-        database = os.environ["MCP_AUTH_DATABASE"]
-        portfolio_db = os.environ.get("PORTFOLIO_DATABASE", "(default)")
-        if database in {"(default)", portfolio_db}:
-            raise ValueError("OAuth records need their own database")
-        urls = {}
-        for name in ("REFRESH_FUNCTION_URL", "RECONNECT_FUNCTION_URL"):
-            target = urlsplit(os.environ.get(name, ""))
-            if (target.scheme != "https" or not (target.hostname or "").endswith(".run.app")
-                    or target.path or target.query or target.fragment or target.username):
-                raise ValueError(name + " must be a Cloud Run HTTPS origin")
-            urls[name] = os.environ[name]
-        return cls(base, project, owner, public, database,
-                   portfolio_database=portfolio_db,
-                   stale_seconds=int(os.environ.get("STALE_SECONDS", "25200")),
-                   refresh_url=urls["REFRESH_FUNCTION_URL"],
-                   reconnect_url=urls["RECONNECT_FUNCTION_URL"])
+        return cls(base, project, owner, public, os.environ["MCP_AUTH_DATABASE"],
+                   api_key_secret=os.environ["API_KEY_SECRET_ID"])

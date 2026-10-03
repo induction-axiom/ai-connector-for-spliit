@@ -3,7 +3,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY *.py ./
-COPY wealthsimple_connector ./wealthsimple_connector
 COPY static ./static
 COPY version.json ./
 RUN useradd --uid 10001 --create-home app

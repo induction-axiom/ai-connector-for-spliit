@@ -5,8 +5,7 @@ import {test, expect} from "@playwright/test";
 
 const STATIC = new URL("../firebase/mcp/static/", import.meta.url);
 const BASE = "https://owner.test";
-const CONTROLS = ["primary-action", "connect-submit", "refresh-portfolio", "refresh-activities",
-  "ws-signout"];
+const KEY = "k".repeat(40);
 
 const FIREBASE_APP = "export const initializeApp = config => ({config});";
 const FIREBASE_AUTH = `
@@ -20,24 +19,22 @@ const FIREBASE_AUTH = `
     {email: "owner@example.com", getIdToken: async () => "synthetic-owner-token"}));
 `;
 
-function status(connection) {
-  const connected = connection === "connected";
+function status(state, apps = []) {
+  const connected = state === "connected";
   return {
-    portfolio: {snapshot_available: true, connection_state: connection,
-      reconnect_required: connection === "reconnect_required",
-      fetched_at: "2026-09-27T12:00:00+00:00", account_count: 1, position_count: 0},
-    activities: {available: true, coverage_complete: connected, sync_status: "complete",
-      fetched_at: "2026-09-27T12:00:00+00:00", rows_processed: 1},
-    positions: [], recent_activities: [], apps: [],
-    diagnostics: {connector_version: "test", repository: "example/example",
-      mcp_endpoint: BASE + "/mcp"},
+    splitwise: {state, checked_at: 1790000000, latency_ms: 120,
+      key_saved_at: state === "key_missing" ? null : 1790000000,
+      user: connected ? {id: 1, first_name: "Sam", last_name: null, email: "sam@example.com"} : undefined},
+    health: {last_ok_at: connected ? 1790000000 : null, last_error_code: null, last_error_at: null},
+    apps,
+    diagnostics: {connector_version: "test", repository: "example/example", project_id: "your-project",
+      api_key_secret: "splitwise-api-key", auth_database: "(default)", mcp_endpoint: BASE + "/mcp"},
   };
 }
 
-// Serve the dashboard; each /owner/refresh waits until the test settles it. Sign-in replies
-// with each of `challenges` first, then succeeds.
-async function openConsole(page, extra = {}, challenges = []) {
-  const state = {connection: "reconnect_required", refreshes: [], errors: []};
+// Serve the dashboard; /owner/key waits until the test settles it.
+async function openDashboard(page, initial = "key_missing") {
+  const state = {splitwise: initial, keys: [], removed: 0, errors: []};
   page.on("pageerror", error => state.errors.push(error.message));
   await page.route("**/*", async route => {
     const url = new URL(route.request().url());
@@ -54,16 +51,19 @@ async function openConsole(page, extra = {}, challenges = []) {
         body: readFileSync(new URL(name, STATIC))});
     }
     if (url.pathname === "/firebase-config") return json({authDomain: "example.test"});
-    if (url.pathname === "/owner/status") return json({...status(state.connection), ...extra});
-    if (url.pathname === "/owner/reconnect") {
-      if (challenges.length) return json(challenges.shift());
-      state.connection = "connected";
-      return json({result: "reconnect_succeeded"});
+    if (url.pathname === "/owner/status") return json(status(state.splitwise));
+    if (url.pathname === "/owner/key") {
+      const {api_key} = route.request().postDataJSON();
+      return new Promise(settle => state.keys.push({api_key, reply: result => {
+        if (result === "key_saved") state.splitwise = "connected";
+        json({result});
+        settle();
+      }}));
     }
-    if (url.pathname === "/owner/refresh") {
-      const {target} = route.request().postDataJSON();
-      return new Promise(settle => state.refreshes.push(
-        {target, reply: result => { json({result}); settle(); }}));
+    if (url.pathname === "/owner/key/remove") {
+      state.removed += 1;
+      state.splitwise = "key_missing";
+      return json({result: "key_removed"});
     }
     return json({});
   });
@@ -71,109 +71,78 @@ async function openConsole(page, extra = {}, challenges = []) {
   return state;
 }
 
-const disabled = page => page.evaluate(ids => Object.fromEntries(
-  ids.map(id => [id, document.getElementById(id).disabled])), CONTROLS);
-
-async function nextRefresh(state, target) {
-  await expect.poll(() => state.refreshes.map(r => r.target)).toContain(target);
-  return state.refreshes.find(r => r.target === target);
+async function nextKey(state) {
+  await expect.poll(() => state.keys.length).toBeGreaterThan(0);
+  return state.keys.shift();
 }
 
-async function reconnect(page) {
-  await page.fill("#username", "owner@example.com");
-  await page.fill("#password", "synthetic-password");
-  await page.click("#connect-submit");
-}
+test("a new key is checked, saved, and the page turns to connecting an AI app", async ({page}) => {
+  const state = await openDashboard(page);
+  await expect(page.locator("#status-title")).toHaveText("Add your Splitwise API key.");
+  await expect(page.locator("#primary-action")).toBeHidden();
+  await expect(page.locator("#key-cancel")).toBeHidden();
+  await page.fill("#api-key", KEY);
+  await page.click("#key-submit");
 
-test("controls stay disabled from reconnect until the automatic sync finishes", async ({page}) => {
-  const state = await openConsole(page);
-  await reconnect(page);
+  const pending = await nextKey(state);
+  expect(pending.api_key).toBe(KEY);
+  await expect(page.locator("#key-submit")).toBeDisabled();
+  await expect(page.locator("#message")).toHaveText("Checking the key with Splitwise…");
+  pending.reply("key_saved");
 
-  const portfolio = await nextRefresh(state, "portfolio");
-  const locked = Object.fromEntries(CONTROLS.map(id => [id, true]));
-  expect(await disabled(page)).toEqual(locked);
-  await expect(page.locator("#message")).toHaveText("Syncing your portfolio…");
-  portfolio.reply("refresh_succeeded");
-
-  const activities = await nextRefresh(state, "activities");
-  expect(await disabled(page)).toEqual(locked);
-  await expect(page.locator("#message")).toHaveText("Syncing your activity…");
-  activities.reply("refresh_succeeded");
-
-  await expect(page.locator("#message")).toHaveText("Your data is up to date.");
-  await expect(page.locator("#primary-action")).toBeEnabled();
-  await expect(page.locator("#refresh-portfolio")).toBeEnabled();
+  await expect(page.locator("#message")).toHaveText("Key saved. Your AI apps can use Splitwise now.");
+  await expect(page.locator("#status-title")).toHaveText("Connect an AI app.");
+  await expect(page.locator("#key-panel")).toBeHidden();
+  await expect(page.locator("#fact-account")).toHaveText("Sam (sam@example.com)");
+  await expect(page.locator("#api-key")).toHaveValue("");
   expect(state.errors).toEqual([]);
 });
 
-test("the code prompt names where Wealthsimple sent the code", async ({page}) => {
-  const state = await openConsole(page, {}, [
-    {result: "mfa_required", method: "sms", hint: "1234"}]);
-  await reconnect(page);
-  await expect(page.locator("#otp-hint")).toHaveText(
-    "Enter the code Wealthsimple texted to the number ending in 1234.");
-  await expect(page.locator("#credential-fields")).toBeHidden();
-  expect(state.errors).toEqual([]);
-});
-
-test("the code prompt stays neutral when the method is unknown", async ({page}) => {
-  const state = await openConsole(page, {}, [{result: "mfa_required", method: null, hint: null}]);
-  await reconnect(page);
-  await expect(page.locator("#otp-hint")).toHaveText(
-    "Enter the code from your authenticator app, or the one Wealthsimple texted or emailed you.");
-  expect(state.errors).toEqual([]);
-});
-
-test("a failed automatic sync reports the result and releases the controls", async ({page}) => {
-  const state = await openConsole(page);
-  await reconnect(page);
-
-  (await nextRefresh(state, "portfolio")).reply("refresh_failed");
+test("a rejected key keeps the form open and says why", async ({page}) => {
+  const state = await openDashboard(page, "key_rejected");
+  await expect(page.locator("#status-title")).toHaveText("Replace your Splitwise API key.");
+  await page.fill("#api-key", "w".repeat(40));
+  await page.click("#key-submit");
+  (await nextKey(state)).reply("key_rejected");
   await expect(page.locator("#message")).toHaveText(
-    "The sync didn't finish. Your saved data is unchanged.");
-  await expect(page.locator("#primary-action")).toBeEnabled();
-  expect(state.refreshes.map(r => r.target)).toEqual(["portfolio"]);  // stopped after the failure
+    "Splitwise didn't accept that key. Create a new one and try again.");
+  await expect(page.locator("#key-panel")).toBeVisible();
+  await expect(page.locator("#key-submit")).toBeEnabled();
+  expect(state.errors).toEqual([]);
+});
+
+test("removing the key takes two clicks", async ({page}) => {
+  const state = await openDashboard(page, "connected");
+  await expect(page.locator("#key-panel")).toBeHidden();
+  await page.click("#key-remove");
+  await expect(page.locator("#key-remove")).toHaveText("Click again to remove");
+  expect(state.removed).toBe(0);
+  await page.click("#key-remove");
+  await expect(page.locator("#status-title")).toHaveText("Add your Splitwise API key.");
+  expect(state.removed).toBe(1);
+  expect(state.errors).toEqual([]);
+});
+
+test("replace key opens the form, and cancel closes it", async ({page}) => {
+  const state = await openDashboard(page, "connected");
+  await page.click("#key-replace");
+  await expect(page.locator("#key-panel")).toBeVisible();
+  await expect(page.locator("#key-title")).toHaveText("Replace your Splitwise API key");
+  await page.click("#key-cancel");
+  await expect(page.locator("#key-panel")).toBeHidden();
   expect(state.errors).toEqual([]);
 });
 
 test("the ChatGPT guide links to Plugins and offers the address to paste", async ({page}) => {
-  const state = await openConsole(page);
+  const state = await openDashboard(page, "connected");
   await expect(page.locator("#mcp-url")).toHaveText(BASE + "/mcp");
   await page.evaluate(() => document.querySelector('[data-guide="chatgpt"]').click());
   const guide = page.locator("#guide");
   await expect(guide).toBeVisible();
-  await expect(guide).toContainText("Create MCP App");
+  await expect(guide).toContainText("Name it Splitwise");
   await expect(guide).toContainText(BASE + "/mcp");
   const links = await guide.locator("a.step-link").evaluateAll(
     anchors => anchors.map(a => [a.textContent, a.href, a.target]));
   expect(links).toContainEqual(["Open ChatGPT Plugins", "https://chatgpt.com/plugins", "_blank"]);
-  expect(state.errors).toEqual([]);
-});
-
-test("recent activity fills the height beside holdings, and no more", async ({page}) => {
-  const money = amount => ({amount, currency: "CAD"});
-  const positions = ["AAA", "BBB", "CCC", "DDD", "EEE", "FFF", "GGG", "HHH"].map((symbol, i) => ({
-    symbol, reported_market_value: money(String(100 - i)), reported_book_value: money("90"),
-    reported_unrealized_returns: money(String(10 - i))}));
-  const recent_activities = Array.from({length: 12}, (_, i) => ({
-    type: "DIVIDEND", asset_symbol: "AAA", amount: "1.00", currency: "CAD",
-    occurred_at: `2026-09-${String(20 - i).padStart(2, "0")}T12:00:00+00:00`}));
-  await page.setViewportSize({width: 1280, height: 900});
-  const state = await openConsole(page, {positions, recent_activities});
-  await expect(page.locator("#holdings li")).toHaveCount(7);
-  const heights = () => page.evaluate(() => ["holdings", "recent"].map(id =>
-    document.getElementById(id).closest(".tile").getBoundingClientRect().height));
-  const shown = page.locator("#recent li:not([hidden])");
-  await expect.poll(async () => shown.count()).toBeGreaterThan(3);
-  expect(await shown.count()).toBeLessThan(12);
-  // One more row would make the Recent activity tile taller than Holdings.
-  const [holdings, recent] = await heights();
-  expect(recent).toBe(holdings);
-  await page.evaluate(() => {
-    const hidden = document.querySelector("#recent li[hidden]");
-    hidden.hidden = false;
-  });
-  const [, taller] = await heights();
-  expect(taller).toBeGreaterThan(holdings);
   expect(state.errors).toEqual([]);
 });
