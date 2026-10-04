@@ -8,7 +8,8 @@
     "groups.expenses.get": {"method": "GET", "input": ["groupId", "expenseId"]},
     "groups.balances.list": {"method": "GET", "input": ["groupId"]},
     "groups.expenses.create": {"method": "POST", "input": ["groupId", "expenseFormValues", "participantId", "expenseId"]},
-    "groups.expenses.update": {"method": "POST", "input": ["expenseId", "groupId", "expenseFormValues", "participantId"]}
+    "groups.expenses.update": {"method": "POST", "input": ["expenseId", "groupId", "expenseFormValues", "participantId"]},
+    "groups.expenses.delete": {"method": "POST", "input": ["expenseId", "groupId", "participantId"]}
   },
   "expenseFormValues": {
     "required": ["expenseDate", "title", "amount", "paidBy", "paidFor", "saveDefaultSplittingOptions", "isReimbursement"],

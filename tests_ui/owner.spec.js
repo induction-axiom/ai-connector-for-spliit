@@ -116,19 +116,23 @@ test("removing a group takes two clicks", async ({page}) => {
   expect(state.errors).toEqual([]);
 });
 
-test("AI changes say what each app added and changed", async ({page}) => {
+test("AI changes say what each app added, changed and deleted", async ({page}) => {
   const dinner = {title: "Dinner", amount: "45.00", date: "2026-10-01", paid_by: "Jong", split_mode: "EVENLY",
     paid_for: [{name: "Jong", share: null}, {name: "Alex", share: null}], category: "Dining", notes: null};
+  const payback = {...dinner, title: "Reimbursement", amount: "15.00", paid_by: "Alex", is_reimbursement: true};
   const state = await openDashboard(page, {groups: [TRIP], changes: [
+    {at: Date.now() / 1000, app: CLAUDE, tool: "delete_expense", group: "Trip", before: payback, after: null},
     {at: Date.now() / 1000, app: CLAUDE, tool: "update_expense", group: "Trip",
       before: dinner, after: {...dinner, amount: "50.00"}},
     {at: Date.now() / 1000, app: CLAUDE, tool: "create_expense", group: "Trip", before: null, after: dinner},
   ]});
   const rows = page.locator("#changes-list li");
-  await expect(rows.nth(0)).toContainText("Claude changed Dinner");
-  await expect(rows.nth(0)).toContainText("amount 45.00 → 50.00 · Trip");
-  await expect(rows.nth(1)).toContainText("Claude added Dinner");
-  await expect(rows.nth(1)).toContainText("45.00 · paid by Jong · Trip");
+  await expect(rows.nth(0)).toContainText("Claude deleted a reimbursement");
+  await expect(rows.nth(0)).toContainText("15.00 · paid by Alex · Trip");
+  await expect(rows.nth(1)).toContainText("Claude changed Dinner");
+  await expect(rows.nth(1)).toContainText("amount 45.00 → 50.00 · Trip");
+  await expect(rows.nth(2)).toContainText("Claude added Dinner");
+  await expect(rows.nth(2)).toContainText("45.00 · paid by Jong · Trip");
   expect(state.errors).toEqual([]);
 });
 

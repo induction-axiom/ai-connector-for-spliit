@@ -45,8 +45,16 @@ class ReadTests(Harness):
 
     def test_balances_in_names_and_decimals(self):
         result = self.call("get_balances", group="Trip")
-        self.assertIn({"name": "Alex", "paid": "0.00", "paid_for": "15.00", "balance": "-15.00"}, result["balances"])
+        self.assertEqual(result["balances"], [{"name": "Jong", "balance": "30.00"},
+                                              {"name": "Alex", "balance": "-15.00"},
+                                              {"name": "Sam", "balance": "-15.00"}])
         self.assertEqual(result["reimbursements"][0], {"from": "Alex", "to": "Jong", "amount": "15.00"})
+
+    def test_settled_members_have_a_zero_balance(self):
+        self.spliit.balances = {}
+        result = self.call("get_balances", group="Trip")
+        self.assertEqual([b["balance"] for b in result["balances"]], ["0.00", "0.00", "0.00"])
+        self.assertEqual(result["reimbursements"], [])
 
     def test_expenses_page_and_show_shares(self):
         for i in range(2, 5):
@@ -148,12 +156,38 @@ class WriteTests(Harness):
         self.assertEqual((updated["before"]["title"], updated["after"]["title"]), ("Dinner", "Dinner at Sushi Bar"))
         self.assertNotIn(GROUP_ID, json.dumps(self.store.changes))
 
+    def test_delete_only_what_ai_apps_added_and_log_it(self):
+        added = self.call("create_expense", group="Trip", title="Groceries", amount="30")["expense"]
+        result = self.call("delete_expense", group="Trip", expense_id=added["id"])
+        self.assertEqual((result["deleted"], result["previous"]), (True, added))
+        self.assertEqual(self.sent("groups.expenses.delete"),
+                         [{"groupId": GROUP_ID, "expenseId": added["id"], "participantId": ME}])
+        deleted = self.store.changes[-1]
+        self.assertEqual((deleted["tool"], deleted["before"], deleted["after"]), ("delete_expense", added, None))
+        self.assertEqual(self.call("delete_expense", group="Trip", expense_id=added["id"])["error_code"], "not_found")
+        # Dinner was added in Spliit itself.
+        refused = self.call("delete_expense", group="Trip", expense_id="e1")
+        self.assertEqual((refused["ok"], refused["error_code"]), (False, "not_added_by_ai"))
+        self.assertEqual(len(self.sent("groups.expenses.delete")), 1)
+
+    def test_expenses_of_other_groups_are_not_found(self):
+        # Spliit reads, changes and deletes an expense by its ID alone.
+        self.spliit.store("x1", {"title": "Rent", "amount": 100000, "paidBy": "p-other", "paidFor": [],
+                                 "expenseDate": "2026-10-01", "isReimbursement": False}, group_id="otherGroup")
+        self.store.add_change({"at": 0, "app": {}, "tool": "create_expense", "group": "Other",
+                               "expense_id": "x1", "before": None, "after": {}})
+        for name, arguments in (("get_expense", {}), ("update_expense", {"amount": "1"}), ("delete_expense", {})):
+            result = self.call(name, group="Trip", expense_id="x1", **arguments)
+            self.assertEqual(result["error_code"], "not_found", name)
+            self.assertNotIn("Rent", json.dumps(result), name)
+        self.assertEqual(self.sent("groups.expenses.update") + self.sent("groups.expenses.delete"), [])
+
     def test_annotations(self):
         tools = {t["name"]: t["annotations"] for t in self.mcp(self.tokens()["access_token"]).json()["result"]["tools"]}
         reads = {"list_groups", "get_balances", "list_expenses", "get_expense", "list_categories"}
         for name, annotations in tools.items():
             self.assertEqual(annotations["readOnlyHint"], name in reads, name)
-            self.assertFalse(annotations["destructiveHint"], name)
+            self.assertEqual(annotations["destructiveHint"], name == "delete_expense", name)
 
 
 class ContractTests(Harness):
@@ -168,6 +202,7 @@ class ContractTests(Harness):
         self.call("record_reimbursement", group="Trip", amount="5", to="Alex")
         self.call("update_expense", group="Trip", expense_id="e1", title="Brunch", amount="10", paid_by="Alex",
                   split_mode="EVENLY", paid_for=[{"name": "Alex"}], date="2026-10-01", category_id=1, notes="x")
+        self.call("delete_expense", group="Trip", expense_id="e2")
         procedures, form_spec = SPEC["procedures"], SPEC["expenseFormValues"]
         used = set()
         for request in self.spliit.requests:

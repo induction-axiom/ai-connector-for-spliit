@@ -3,7 +3,7 @@
 The AI names groups and people; it never sees a group ID, since that is the key to the
 group. Expected failures come back as results with error_code and next_action, not tool
 errors, so the AI learns what to do next. Every write is logged in Firestore with the
-expense before and after; update_expense also returns the previous values.
+expense before and after; update_expense and delete_expense also return the previous values.
 """
 from datetime import date as Date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -125,6 +125,9 @@ def register(server, spliit, groups, changes, who, owner_url, connector, securit
     # Adding twice makes two expenses; changes are logged with their previous values.
     write = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False,
                             openWorldHint=True)
+    # Spliit deletes for good; the change log keeps the expense, to add it again.
+    delete = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=True,
+                             openWorldHint=True)
 
     def run(work):
         try:
@@ -204,18 +207,20 @@ def register(server, spliit, groups, changes, who, owner_url, connector, securit
     def get_balances(group: GroupName) -> dict[str, Any]:
         """Each member's balance in a group, and the reimbursements Spliit suggests to settle up.
 
-        A positive balance means the group owes that member; negative means they owe.
-        In reimbursements, "from" pays "to" the amount.
+        A positive balance means the group owes that member; negative means they owe;
+        zero means they are settled. In reimbursements, "from" pays "to" the amount.
         """
         def work():
             entry, live = load(group)
             names = {p["id"]: p["name"] for p in live["participants"]}
             code = live["currencyCode"]
             answer = spliit.balances(entry["id"])
+            # Spliit derives these from its suggested reimbursements, so its paid and paidFor
+            # are not what anyone spent, and a settled member is missing.
+            totals = {pid: b["total"] for pid, b in answer["balances"].items()}
             return {"currency": code or live["currency"],
-                    "balances": [{"name": names.get(pid), "paid": to_major(b["paid"], code),
-                                  "paid_for": to_major(b["paidFor"], code), "balance": to_major(b["total"], code)}
-                                 for pid, b in answer["balances"].items()],
+                    "balances": [{"name": p["name"], "balance": to_major(totals.get(p["id"], 0), code)}
+                                 for p in live["participants"]],
                     "reimbursements": [{"from": names.get(r["from"]), "to": names.get(r["to"]),
                                         "amount": to_major(r["amount"], code)} for r in answer["reimbursements"]]}
         return run(work)
@@ -358,6 +363,26 @@ def register(server, spliit, groups, changes, who, owner_url, connector, securit
             before = expense_view(current, live)
             spliit.update_expense(entry["id"], expense_id, form, entry["me"])
             return {"expense": log("update_expense", entry, live, expense_id, before), "previous": before}
+        return run(work)
+
+    @server.tool(annotations=delete, meta=security)
+    def delete_expense(group: GroupName, expense_id: ExpenseId) -> dict[str, Any]:
+        """Delete an expense that the owner's AI apps added, only when the owner asks to
+        delete that one.
+
+        Spliit deletes for good. previous holds the expense: to undo, add it again with
+        create_expense, or record_reimbursement if is_reimbursement. Expenses added in
+        Spliit itself can't be deleted here; the owner deletes them in Spliit.
+        """
+        def work():
+            entry, live = load(group)
+            before = expense_view(spliit.expense(entry["id"], expense_id), live)
+            if not changes.added_by_ai(expense_id):
+                raise Failure("not_added_by_ai", "Only expenses the owner's AI apps added can be deleted here; the owner can delete this one in Spliit.")
+            spliit.delete_expense(entry["id"], expense_id, entry["me"])
+            changes.add_change({"at": time.time(), "app": who(), "tool": "delete_expense", "group": entry["name"],
+                                "expense_id": expense_id, "before": before, "after": None})
+            return {"deleted": True, "previous": before}
         return run(work)
 
     return {"list_groups": list_groups, "get_balances": get_balances, "list_expenses": list_expenses}
