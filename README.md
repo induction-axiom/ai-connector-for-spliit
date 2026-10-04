@@ -1,37 +1,38 @@
-# Private AI connector for Splitwise
+# Private AI connector for Spliit
 
-Ask Gemini, Claude or ChatGPT about your shared expenses, and tell it about new
-ones, from a private connector that runs in your own Firebase project.
+Ask Gemini, Claude or ChatGPT about your shared expenses in
+[Spliit](https://spliit.app), and tell it about new ones, from a private
+connector that runs in your own Firebase project.
 
-> "I paid 84.60 for dinner with Alex and Sam, split it evenly."
+> "I paid 84.60 for dinner in Trip, split it evenly."
 >
-> "How much do I owe across all my groups?"
+> "Who owes whom in Trip, and how do we settle up?"
 >
-> "What did our Montreal trip cost me, not counting payments?"
+> "Alex paid me back 15."
 
 - **Yours alone.** Each person deploys their own copy into their own Firebase
-  project, with their own Splitwise API key. Your data goes from Splitwise to
-  your project to the AI app you connect, and nowhere else: there is no shared
+  project, with their own group links. Your data goes from Spliit to your
+  project to the AI app you connect, and nowhere else: there is no shared
   server, and the developer never sees it.
-- **Reads and records.** The AI can read your groups, friends, balances and
-  expenses, and add, change, delete or settle up expenses. Deleted expenses
-  can be restored and changes reverted, and it can't touch your groups,
-  friends or profile.
-- **One page to manage it.** The dashboard holds your Splitwise API key, shows
-  whether Splitwise is answering, and lists the AI apps you've connected.
+- **Reads and records.** The AI can read your groups' members, balances and
+  expenses, and add expenses, record reimbursements and change expenses. It
+  can't delete expenses or change groups and members, and every change it
+  makes is kept with what the expense was before.
+- **One page to manage it.** The dashboard holds your group links, shows
+  whether Spliit is answering, lists the AI apps you've connected, and lists
+  every change they made.
 
-This project is unofficial and not affiliated with Splitwise. It uses the
-[Splitwise Self-Serve API](https://dev.splitwise.com/), which is meant for
-personal, non-commercial use and can change without notice. Splitwise is a
-trademark of Splitwise, Inc.
+This project is unofficial and not affiliated with Spliit. It uses the API
+Spliit's own web app uses, which is not published and can change without
+notice. Spliit is free and runs on donations; if it helps you, consider
+[supporting it](https://opencollective.com/spliit).
 
 ## Why this exists
 
 I wanted to record a shared expense by just telling my AI app, from my phone,
-right after paying. Most open-source Splitwise MCP servers I found run on your
-own computer with the API key in a config file, which doesn't reach the AI
-apps on the web or on a phone. So I made this, for anyone to run their own
-copy.
+right after paying, in a free app my friends can use without an account.
+Spliit fits, and it's open source. So I made this connector, for anyone to run
+their own copy.
 
 ## How to use
 
@@ -44,23 +45,22 @@ the Blaze plan. For one person, it stays within the no-cost tier.
 
 Click this button. It opens Google Cloud Shell with a setup guide on the right.
 
-[![Set up in Google Cloud Shell](https://img.shields.io/badge/Set%20up%20in%20Google%20Cloud%20Shell-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/induction-axiom/ai-connector-for-splitwise&cloudshell_git_branch=stable&cloudshell_tutorial=docs/cloudshell-tutorial.md&show=terminal)
+[![Set up in Google Cloud Shell](https://img.shields.io/badge/Set%20up%20in%20Google%20Cloud%20Shell-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/induction-axiom/ai-connector-for-spliit&cloudshell_git_branch=stable&cloudshell_tutorial=docs/cloudshell-tutorial.md&show=terminal)
 
 When Cloud Shell asks, tick **Trust repo**. Then follow the guide. It takes
-about 5 minutes and ends with your dashboard link. Bookmark it.
+a few minutes and ends with your dashboard link. Bookmark it.
 
 If the guide doesn't open, the download from GitHub was interrupted. In the
 terminal, press ↑ then Enter to try again.
 
-### 3. Add your Splitwise API key
+### 3. Add your Spliit groups
 
-Open the dashboard and sign in with Google. It walks you through creating a
-key on your [Splitwise apps page](https://secure.splitwise.com/apps): register
-an app with any name, then choose **Create API key**. Paste the key into the
-dashboard. It is checked with Splitwise before it is saved.
+Open the dashboard and sign in with Google. Paste a group's link from Spliit,
+then choose which member you are. Add as many groups as you like.
 
-Creating a key means accepting Splitwise's API terms of use, on the same
-[developer page](https://dev.splitwise.com/).
+A group's link is its key: anyone who has it can read and change the group,
+which is how you share it with friends. The dashboard keeps it in your
+project's Secret Manager, and your AI apps never see it.
 
 ### 4. Connect your AI app
 
@@ -74,34 +74,32 @@ that looks the same.
 
 - **Lost the dashboard link?** Ask your AI app for it.
 - **Updating.** The dashboard shows a banner when a new version is out. Click
-  **How to update**. Your API key and connections stay.
-- **Removing it.** Disconnect your AI apps and remove the key in the
+  **How to update**. Your groups, connections and change log stay.
+- **Removing it.** Disconnect your AI apps and remove your groups in the
   dashboard, then delete the Firebase project (**Project settings → General →
-  Delete project**). Also delete the app on your
-  [Splitwise apps page](https://secure.splitwise.com/apps), which ends the key
-  for good.
+  Delete project**). Your groups stay in Spliit, unchanged.
 
 ## How your data is handled
 
-Your connector asks Splitwise each time your AI app calls a tool and passes
-the answer on. It doesn't save your expenses anywhere. Your project keeps only
-the API key, in Secret Manager, which only the connector can read; the AI app
-sign-ins you approved; and the last error Splitwise gave, for the dashboard.
+Your connector asks Spliit each time your AI app calls a tool and passes the
+answer on. Your project keeps the group links, in Secret Manager, which only
+the connector can read; the AI app sign-ins you approved; the last error
+Spliit gave; and a log of every expense your AI apps added or changed, with
+what it was before and after. The log stays until you delete the project.
 
-The AI gets six read tools (`get_status`, `list_groups`, `list_friends`,
-`list_expenses`, `get_expense`, `list_categories`) and six that record
-(`create_expense`, `record_payment`, `update_expense`, `delete_expense`,
-`restore_expense`, `add_comment`). What it records, everyone who shares that
-expense sees, just as if you had entered it in Splitwise. Before adding an
-expense, the connector looks for one with the same cost from the last three
-days, and asks you to confirm if it finds one. Your API key and pictures are
-never shared with the AI.
+The AI gets five read tools (`list_groups`, `get_balances`, `list_expenses`,
+`get_expense`, `list_categories`) and three that record (`create_expense`,
+`record_reimbursement`, `update_expense`). It names groups and members, and
+never sees a group's link or ID. What it records, everyone in the group sees,
+just as if you had entered it in Spliit. Before adding an expense, the
+connector looks for one with the same amount added in the last three days,
+and asks you to confirm if it finds one.
 
 ## Development
 
 ```text
 firebase/
-  mcp/        MCP server, Splitwise client, tools, dashboard
+  mcp/        MCP server, Spliit client, tools, dashboard
   scripts/    bootstrap.sh, manage.py (bootstrap, deploy, doctor, urls)
 tests_mcp/  tests_deployment/  tests_ui/
 docs/cloudshell-tutorial.md     The Cloud Shell guide
@@ -122,8 +120,9 @@ python3 -m unittest discover -s tests_deployment -t tests_deployment
 (cd tests_ui && npm ci && npx playwright test)
 ```
 
-`tests_mcp/splitwise_api.json` lists the parameters Splitwise documents for
-each endpoint this connector calls; a test checks every request against it.
+Spliit's API is the tRPC one its web app uses. `tests_mcp/spliit_api.json`
+lists the procedures and inputs this connector calls, from Spliit's source at
+a fixed commit; a test checks every request against it.
 
 ### Architecture
 
@@ -131,22 +130,22 @@ each endpoint this connector calls; a test checks every request against it.
 flowchart LR
   AI["AI app"]:::ai
   Browser["Owner, in the<br/>dashboard"]:::you
-  SW["Splitwise API"]:::sw
+  SP["spliit.app"]:::sp
   subgraph project["Owner's Firebase project"]
-    Run["Cloud Run: splitwise-mcp<br/>MCP endpoint + dashboard<br/>runs as splitwise-mcp"]:::run
-    Auth[("Firestore (default)<br/>OAuth clients and grants")]:::store
-    Secret[("Secret Manager<br/>splitwise-api-key")]:::secret
+    Run["Cloud Run: spliit-mcp<br/>MCP endpoint + dashboard<br/>runs as spliit-mcp"]:::run
+    Store[("Firestore (default)<br/>OAuth grants, AI change log")]:::store
+    Secret[("Secret Manager<br/>spliit-groups")]:::secret
   end
   AI -- "1. tool call with OAuth token" --> Run
   Browser -- "Google sign-in" --> Run
-  Run -- "checks tokens" --> Auth
-  Run -- "2. reads the key" --> Secret
-  Run -- "3. reads or records" --> SW
+  Run -- "checks tokens, logs changes" --> Store
+  Run -- "2. reads the group links" --> Secret
+  Run -- "3. reads or records" --> SP
 
   %% Saturated fills with fixed text colours read well on light and dark pages.
   classDef ai fill:#10a37f,stroke:#0b7a5f,color:#ffffff
   classDef you fill:#0071e3,stroke:#0058b0,color:#ffffff
-  classDef sw fill:#1cc29f,stroke:#14967a,color:#ffffff
+  classDef sp fill:#16a34a,stroke:#15803d,color:#ffffff
   classDef run fill:#4285f4,stroke:#2f6ad0,color:#ffffff
   classDef store fill:#ff9800,stroke:#c77700,color:#1d1d1f
   classDef secret fill:#e8453c,stroke:#b8322b,color:#ffffff
@@ -158,14 +157,14 @@ A tool call, step by step:
 
 1. The AI app calls `/mcp` on Cloud Run with an OAuth token the owner approved
    once with Google.
-2. Cloud Run reads the API key from Secret Manager. Only the `splitwise-mcp`
-   identity can read or change it.
-3. It calls Splitwise and returns the answer, without pictures or group invite
-   links.
+2. Cloud Run reads the saved group links from Secret Manager. Only the
+   `spliit-mcp` identity can read or change them.
+3. It calls Spliit, turns IDs into names and amounts into decimals, and
+   returns the answer. It logs each write in Firestore.
 
 Resource names are fixed in `firebase/scripts/configuration.py`. Nothing is
-saved locally: `manage.py` finds the deployed `splitwise-mcp` service and
-reads its region, owner and Firebase config from it.
+saved locally: `manage.py` finds the deployed `spliit-mcp` service and reads
+its region, owner and Firebase config from it.
 
 This project started as a copy of
 [ai-connector-for-your-wealthsimple](https://github.com/induction-axiom/ai-connector-for-your-wealthsimple),

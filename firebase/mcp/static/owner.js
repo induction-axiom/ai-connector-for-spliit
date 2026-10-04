@@ -471,7 +471,7 @@ function guides() {
         label: "Open Cloud Shell"},
       {text: "Paste this into the terminal and press Enter:",
         copy: `firebase/scripts/bootstrap.sh ${d.project_id} ${user?.email}`},
-      "Type y when asked. It takes about 5 minutes. Your groups and AI app connections stay as they are.",
+      "Type y when asked. It takes a few minutes. Your groups and AI app connections stay as they are.",
     ], note: "Updating only deploys new code into your own project. You can read every change first under What's new."},
   };
 }

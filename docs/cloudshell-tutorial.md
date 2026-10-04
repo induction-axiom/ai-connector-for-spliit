@@ -1,11 +1,11 @@
-# Set up your private AI connector for Splitwise
+# Set up your private AI connector for Spliit
 
 <walkthrough-tutorial-duration duration="10"></walkthrough-tutorial-duration>
 
 ## What you'll do
 
 1. Run the setup
-2. Add your Splitwise API key
+2. Add your Spliit groups
 3. Connect your AI app
 
 ## Step 1 of 3: Run the setup
@@ -22,14 +22,13 @@ and paste the code back.
 firebase/scripts/bootstrap.sh <walkthrough-project-id/>
 ```
 
-Wait about 5 minutes for **✓ Setup complete**. If it stops with **✗**, fix
+Wait a few minutes for **✓ Setup complete**. If it stops with **✗**, fix
 what it says and run the same command again.
 
-## Step 2 of 3: Add your Splitwise API key
+## Step 2 of 3: Add your Spliit groups
 
 Open the **dashboard** link the terminal printed, and bookmark it. Sign in with
-Google, then follow the steps on the page to create a Splitwise API key and
-paste it in.
+Google, paste a group's link from Spliit, and choose which member you are.
 
 ## Step 3 of 3: Connect your AI app
 

@@ -544,7 +544,7 @@ def confirm_bootstrap(cfg, updating, assume_yes):
     ui.say(f'  Project  {cfg["project_id"]} ({cfg["region"]})')
     ui.say(f'  Owner    {cfg["owner_email"]}')
     ui.say()
-    ui.say("It takes about 5 minutes.")
+    ui.say("It takes a few minutes.")
     if assume_yes:
         ui.say()
         return
