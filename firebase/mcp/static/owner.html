@@ -81,9 +81,10 @@
       </div>
       <div class="panel">
         <ul id="groups-list" class="rows"><li class="row muted">Loading…</li></ul>
-        <dl class="facts">
-          <div><dt>Spliit right now</dt><dd id="fact-live">—</dd></div>
-          <div><dt>Last problem</dt><dd id="fact-last-error">—</dd></div>
+        <!-- Shown only when something is wrong -->
+        <dl id="spliit-facts" class="facts hidden">
+          <div id="fact-live-row"><dt>Spliit right now</dt><dd id="fact-live">—</dd></div>
+          <div id="fact-last-error-row"><dt>Last problem</dt><dd id="fact-last-error">—</dd></div>
         </dl>
       </div>
 

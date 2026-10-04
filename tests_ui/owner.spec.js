@@ -24,8 +24,8 @@ const CLAUDE = {client_id: "c1", name: "Claude", redirect_host: "claude.ai"};
 
 function status(state) {
   return {
-    spliit: {state: "connected", groups: state.groups},
-    last_failure: null,
+    spliit: {state: state.spliit, groups: state.groups},
+    last_failure: state.lastFailure,
     changes: state.changes,
     apps: [],
     diagnostics: {connector_version: "test", repository: "example/example", project_id: "your-project",
@@ -34,8 +34,8 @@ function status(state) {
 }
 
 // Serve the dashboard; each /owner/groups/add waits until the test settles it.
-async function openDashboard(page, {groups = [], changes = []} = {}) {
-  const state = {groups, changes, adds: [], removed: [], errors: []};
+async function openDashboard(page, {groups = [], changes = [], spliit = "connected", lastFailure = null} = {}) {
+  const state = {groups, changes, spliit, lastFailure, adds: [], removed: [], errors: []};
   page.on("pageerror", error => state.errors.push(error.message));
   await page.route("**/*", async route => {
     const url = new URL(route.request().url());
@@ -113,6 +113,24 @@ test("removing a group takes two clicks", async ({page}) => {
   await remove.click();
   await expect(page.locator("#status-title")).toHaveText("Add a Spliit group.");
   expect(state.removed).toEqual(["Trip"]);
+  expect(state.errors).toEqual([]);
+});
+
+test("Spliit's status shows only when something is wrong", async ({page}) => {
+  const now = Date.now() / 1000;
+  const old = {code: "spliit_unavailable", at: now - 8 * 86400};
+  const state = await openDashboard(page, {groups: [TRIP], lastFailure: old});
+  await expect(page.locator("#groups-list")).toContainText("Trip");
+  await expect(page.locator("#spliit-facts")).toBeHidden();
+
+  state.lastFailure = {code: "spliit_unavailable", at: now - 3600};
+  await page.reload();
+  await expect(page.locator("#fact-last-error")).toHaveText("Spliit isn't answering, 1 hour ago");
+  await expect(page.locator("#fact-live-row")).toBeHidden();
+
+  state.spliit = "spliit_unavailable";
+  await page.reload();
+  await expect(page.locator("#fact-live")).toHaveText("Spliit isn't answering");
   expect(state.errors).toEqual([]);
 });
 
