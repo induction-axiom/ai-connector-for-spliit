@@ -45,6 +45,9 @@ function say(id, text, tone = "neutral") {
 
 // ---------- Plain-language copy for result codes ----------
 
+// A Spliit failure older than this is no longer worth showing.
+const PROBLEM_DAYS = 7;
+
 // What each Spliit outcome means for the owner.
 const SPLIIT_COPY = {
   connected: "Answering",
@@ -140,9 +143,14 @@ function renderStatus() {
   showGroupForm(needsGroup || groupFormOpen, !needsGroup);
   const groups = spliit.groups || [];
   el("groups-list").replaceChildren(...(groups.length ? groups.map(groupRow) : [emptyRow("No groups yet.")]));
-  el("fact-live").textContent = SPLIIT_COPY[spliit.state] || spliit.state || "—";
-  el("fact-last-error").textContent = failure
-    ? `${SPLIIT_COPY[failure.code] || failure.code}, ${ago(failure.at)}` : "None";
+  // Only problems are shown: Spliit not answering now, or a failure in the last week.
+  const down = spliit.state && spliit.state !== "connected";
+  const recent = failure && Date.now() / 1000 - failure.at < PROBLEM_DAYS * 86400;
+  el("fact-live").textContent = SPLIIT_COPY[spliit.state] || spliit.state;
+  el("fact-live-row").classList.toggle("hidden", !down);
+  el("fact-last-error").textContent = recent ? `${SPLIIT_COPY[failure.code] || failure.code}, ${ago(failure.at)}` : "";
+  el("fact-last-error-row").classList.toggle("hidden", !recent);
+  el("spliit-facts").classList.toggle("hidden", !down && !recent);
   el("apps-list").replaceChildren(...(apps.length ? apps.map(appRow) : [emptyRow("No apps are connected yet.")]));
   const changes = status.changes || [];
   el("changes-list").replaceChildren(...(changes.length ? changes.map(changeRow) : [emptyRow("Nothing yet.")]));
