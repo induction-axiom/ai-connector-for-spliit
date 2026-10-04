@@ -44,6 +44,7 @@ class FakeSpliit:
 
     def __init__(self):
         self.requests = []
+        self.rate_requests = []
         self.down = False
         self.group = {"id": GROUP_ID, "name": "Trip", "currency": "$", "currencyCode": "CAD",
                       "participants": [{"id": pid, "name": name, "groupId": GROUP_ID}
@@ -75,11 +76,15 @@ class FakeSpliit:
                         for p in form["paidFor"]],
             "splitMode": form.get("splitMode", "EVENLY"), "isReimbursement": form["isReimbursement"],
             "notes": form.get("notes") or None, "documents": form.get("documents", []),
-            "recurrenceRule": form.get("recurrenceRule", "NONE"), "originalAmount": None,
-            "originalCurrency": None, "conversionRate": None,
+            "recurrenceRule": form.get("recurrenceRule", "NONE"),
+            "originalAmount": form.get("originalAmount"), "originalCurrency": form.get("originalCurrency"),
+            # A Prisma Decimal, which superjson sends as a string.
+            "conversionRate": None if form.get("conversionRate") is None else str(form["conversionRate"]),
             "createdAt": created or now()}
 
     def handle(self, request):
+        if request.url.host == "api.frankfurter.dev":
+            return self.exchange_rate(request)
         procedure = request.url.path.removeprefix("/api/trpc/")
         if request.method == "GET":
             raw = request.url.params.get("input")
@@ -98,6 +103,18 @@ class FakeSpliit:
             return httpx.Response(400, json={"error": {"json": {"message": str(error)}}})
         return httpx.Response(200, json={"result": {"data": {"json": answer}}})
 
+    # As api.frankfurter.dev answers: a weekend asks for Friday's rates.
+    RATES = {("JPY", "CAD"): 0.00903, ("USD", "CAD"): 1.3912}
+
+    def exchange_rate(self, request):
+        day, base, target = request.url.path.split("/")[-1], request.url.params["base"], request.url.params["symbols"]
+        self.rate_requests.append({"date": day, "base": base, "symbols": target})
+        if (base, target) not in self.RATES:
+            return httpx.Response(404, json={"message": "not found"})
+        day = {"2026-10-03": "2026-10-02", "2026-10-04": "2026-10-02"}.get(day, day)
+        return httpx.Response(200, json={"amount": 1.0, "base": base, "date": day,
+                                         "rates": {target: self.RATES[(base, target)]}})
+
     def do_categories_list(self, _):
         return {"categories": [{"id": 0, "grouping": "Uncategorized", "name": "General"},
                                {"id": 1, "grouping": "Uncategorized", "name": "Payment"}]}
@@ -111,6 +128,7 @@ class FakeSpliit:
         names = {p["id"]: p["name"] for p in self.group["participants"]}
         page = [{**{k: e[k] for k in ("id", "title", "amount", "expenseDate", "createdAt", "splitMode",
                                         "isReimbursement", "category")},
+                 "originalAmount": e["originalAmount"], "originalCurrency": e["originalCurrency"],
                  "paidBy": {"id": e["paidById"], "name": names[e["paidById"]]},
                  "paidFor": [{"participant": {"id": p["participantId"], "name": names[p["participantId"]]},
                               "shares": p["shares"]} for p in e["paidFor"]]}

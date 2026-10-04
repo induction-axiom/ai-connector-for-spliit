@@ -18,7 +18,7 @@ from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
 
 from config import Config
-from groups import SecretGroups
+from groups import SecretGroups, sync_names
 from oauth import ConsentError, Provider, key
 from spliit import Spliit, SpliitError
 from store import FirestoreStore
@@ -370,9 +370,11 @@ def create_app(config, store, owner_verifier, groups, transport=None):
         saved = groups.get()
         try:
             spliit.categories()  # answers even before any group is added
+            live = {entry["id"]: spliit.group(entry["id"]) for entry in saved}
+            saved = sync_names(groups, saved, live)
             listed = []
             for entry in saved:
-                group = spliit.group(entry["id"])
+                group = live[entry["id"]]
                 if group is None:
                     listed.append({"name": entry["name"], "state": "group_missing"})
                     continue

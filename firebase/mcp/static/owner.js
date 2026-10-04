@@ -314,11 +314,12 @@ el("add-form").onsubmit = async event => {
 
 // ---------- AI changes ----------
 
-const CHANGE_FIELDS = {title: "title", amount: "amount", date: "date", paid_by: "paid by",
+const CHANGE_FIELDS = {title: "title", amount: "amount", original: "paid in", date: "date", paid_by: "paid by",
   split_mode: "split", paid_for: "who it's for", category: "category", notes: "notes"};
 
 const shown = value => value === null || value === undefined || value === "" ? "none"
-  : Array.isArray(value) ? value.map(p => p.share ? `${p.name} ${p.share}` : p.name).join(", ") : String(value);
+  : Array.isArray(value) ? value.map(p => p.share ? `${p.name} ${p.share}` : p.name).join(", ")
+  : typeof value === "object" ? `${value.amount} ${value.currency}` : String(value);
 
 // "Claude added Groceries" or "Claude deleted Groceries" with its amount, or "Claude changed
 // Dinner" with what changed.
@@ -335,12 +336,13 @@ function changeRow(change) {
     const what = expense.is_reimbursement ? "a reimbursement" : expense.title;
     const verb = !change.after ? "deleted" : expense.is_reimbursement ? "recorded" : "added";
     title.textContent = `${app} ${verb} ${what}`;
-    detail.textContent = [expense.amount, expense.paid_by && "paid by " + expense.paid_by, change.group, ago(change.at)]
+    const amount = expense.original ? `${expense.amount} (${shown(expense.original)})` : expense.amount;
+    detail.textContent = [amount, expense.paid_by && "paid by " + expense.paid_by, change.group, ago(change.at)]
       .filter(Boolean).join(" · ");
   } else {
     title.textContent = `${app} changed ${change.before.title}`;
     const diffs = Object.entries(CHANGE_FIELDS)
-      .filter(([field]) => JSON.stringify(change.before[field]) !== JSON.stringify(after[field]))
+      .filter(([field]) => shown(change.before[field]) !== shown(after[field]))
       .map(([field, label]) => `${label} ${shown(change.before[field])} → ${shown(after[field])}`);
     detail.textContent = [...diffs, change.group, ago(change.at)].join(" · ");
   }

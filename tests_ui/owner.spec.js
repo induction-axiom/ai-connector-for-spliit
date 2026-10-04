@@ -154,6 +154,22 @@ test("AI changes say what each app added, changed and deleted", async ({page}) =
   expect(state.errors).toEqual([]);
 });
 
+test("AI changes show an amount paid in another currency", async ({page}) => {
+  const ramen = {title: "Ramen", amount: "27.09", date: "2026-10-02", paid_by: "Jong", split_mode: "EVENLY",
+    paid_for: [{name: "Jong", share: null}], category: "Dining", notes: null,
+    original: {amount: "3000", currency: "JPY", rate: "0.00903"}};
+  const state = await openDashboard(page, {groups: [TRIP], changes: [
+    {at: Date.now() / 1000, app: CLAUDE, tool: "update_expense", group: "Trip", before: ramen,
+      after: {...ramen, amount: "27.40", original: {...ramen.original, rate: "0.00913333"}}},
+    {at: Date.now() / 1000, app: CLAUDE, tool: "create_expense", group: "Trip", before: null, after: ramen},
+  ]});
+  const rows = page.locator("#changes-list li");
+  await expect(rows.nth(0)).toContainText("amount 27.09 → 27.40 · Trip");
+  await expect(rows.nth(0)).not.toContainText("paid in");
+  await expect(rows.nth(1)).toContainText("27.09 (3000 JPY) · paid by Jong · Trip");
+  expect(state.errors).toEqual([]);
+});
+
 test("the ChatGPT guide links to Plugins and offers the address to paste", async ({page}) => {
   const state = await openDashboard(page, {groups: [TRIP]});
   await expect(page.locator("#mcp-url")).toHaveText(BASE + "/mcp");
