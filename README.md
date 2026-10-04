@@ -16,8 +16,8 @@ connector that runs in your own Firebase project.
   server, and the developer never sees it.
 - **Reads and records.** The AI can read your groups' members, balances and
   expenses, and add expenses, record reimbursements and change expenses. It
-  can't delete expenses or change groups and members, and every change it
-  makes is kept with what the expense was before.
+  can delete only the expenses it added, and can't change groups and members.
+  Every change it makes is kept with what the expense was before.
 - **One page to manage it.** The dashboard holds your group links, shows
   whether Spliit is answering, lists the AI apps you've connected, and lists
   every change they made.
@@ -84,16 +84,19 @@ that looks the same.
 Your connector asks Spliit each time your AI app calls a tool and passes the
 answer on. Your project keeps the group links, in Secret Manager, which only
 the connector can read; the AI app sign-ins you approved; the last error
-Spliit gave; and a log of every expense your AI apps added or changed, with
-what it was before and after. The log stays until you delete the project.
+Spliit gave; and a log of every expense your AI apps added, changed or
+deleted, with what it was before and after. The log stays until you delete
+the project.
 
 The AI gets five read tools (`list_groups`, `get_balances`, `list_expenses`,
-`get_expense`, `list_categories`) and three that record (`create_expense`,
-`record_reimbursement`, `update_expense`). It names groups and members, and
-never sees a group's link or ID. What it records, everyone in the group sees,
-just as if you had entered it in Spliit. Before adding an expense, the
-connector looks for one with the same amount added in the last three days,
-and asks you to confirm if it finds one.
+`get_expense`, `list_categories`) and four that record (`create_expense`,
+`record_reimbursement`, `update_expense`, `delete_expense`). It names groups
+and members, and never sees a group's link or ID. What it records, everyone
+in the group sees, just as if you had entered it in Spliit. Before adding an
+expense, the connector looks for one with the same amount added in the last
+three days, and asks you to confirm if it finds one. Spliit deletes for good,
+so the AI can delete only expenses your AI apps added, and the log keeps each
+one it deletes, so it can be added again.
 
 ## Development
 
