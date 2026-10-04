@@ -205,11 +205,11 @@ class WriteTests(Harness):
         more = self.call("update_expense", group="Trip", expense_id=added["id"], original_amount="3500")["expense"]
         self.assertEqual((more["amount"], more["original"]["rate"]), ("31.97", "0.00913333"))
         self.assertEqual(len(self.spliit.rate_requests), 1)
+        # Spliit's update can't clear a conversion.
         plain = self.call("update_expense", group="Trip", expense_id=added["id"], original_currency="CAD")
-        self.assertEqual((plain["expense"]["amount"], plain["previous"]["original"]["amount"]), ("31.97", "3500"))
-        self.assertNotIn("original", plain["expense"])
-        values = self.sent("groups.expenses.update")[-1]["expenseFormValues"]
-        self.assertNotIn("originalAmount", values)
+        self.assertEqual((plain["error_code"], len(self.sent("groups.expenses.update"))), ("invalid_arguments", 2))
+        renamed = self.call("update_expense", group="Trip", expense_id=added["id"], title="Ramen and gyoza")
+        self.assertEqual(renamed["expense"]["original"], {"amount": "3500", "currency": "JPY", "rate": "0.00913333"})
         # An expense without a conversion gets one at its own date's rate.
         converted = self.call("update_expense", group="Trip", expense_id="e1", original_amount="5000", original_currency="JPY")
         self.assertEqual((converted["expense"]["amount"], self.spliit.rate_requests[-1]["date"]), ("45.15", "2026-10-01"))

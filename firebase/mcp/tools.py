@@ -413,8 +413,8 @@ def register(server, spliit, groups, changes, who, owner_url, connector, securit
 
         Amounts in another currency work as in create_expense. On an expense with an
         original amount, a new amount keeps the original and changes the rate, and a new
-        original_amount keeps the rate. original_currency equal to the group's currency
-        removes the conversion. paid_for replaces everyone's share, so give all of them;
+        original_amount keeps the rate. Spliit can't remove the other currency from an
+        expense. paid_for replaces everyone's share, so give all of them;
         with BY_AMOUNT a new amount needs new shares. previous holds the expense before
         this change: to undo it, call update_expense again with its values, giving
         previous.original as original_amount, original_currency and conversion_rate.
@@ -428,8 +428,10 @@ def register(server, spliit, groups, changes, who, owner_url, connector, securit
             if title is not None:
                 form["title"] = title
             if original_currency is not None and original_currency == code:
-                for name in ("originalAmount", "originalCurrency", "conversionRate"):
-                    form.pop(name, None)
+                # Spliit's update leaves out what isn't sent, and refuses null for these.
+                if current.get("originalAmount") is not None:
+                    raise Failure("invalid_arguments", "Spliit can't remove the other currency from an "
+                                  "expense. Change amount instead; the original amount stays for reference.")
                 if amount is not None:
                     form["amount"] = to_minor(amount, code)
             elif any(v is not None for v in (amount, original_amount, original_currency, conversion_rate)):
@@ -443,8 +445,6 @@ def register(server, spliit, groups, changes, who, owner_url, connector, securit
                 day = date or Date.fromisoformat(current["expenseDate"][:10])
                 form["amount"], conversion, looked_up = converted(live, day, amount, original, currency,
                                                                   rate, spliit.exchange_rate)
-                for name in ("originalAmount", "originalCurrency", "conversionRate"):
-                    form.pop(name, None)
                 form.update(conversion)
             if paid_by is not None:
                 form["paidBy"] = person(live, paid_by)

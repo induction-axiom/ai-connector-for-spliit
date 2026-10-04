@@ -156,8 +156,11 @@ class FakeSpliit:
 
     def do_groups_expenses_update(self, payload):
         self.check(payload["expenseFormValues"])
-        created = self.expenses[payload["expenseId"]]["createdAt"]
-        self.store(payload["expenseId"], payload["expenseFormValues"], created)
+        current = self.expenses[payload["expenseId"]]
+        # Like Prisma's update: a conversion field left out keeps its value.
+        form = {"originalAmount": current["originalAmount"], "originalCurrency": current["originalCurrency"],
+                "conversionRate": current["conversionRate"], **payload["expenseFormValues"]}
+        self.store(payload["expenseId"], form, current["createdAt"])
         return {"expenseId": payload["expenseId"]}
 
     def do_groups_expenses_delete(self, payload):
