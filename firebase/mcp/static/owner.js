@@ -312,7 +312,8 @@ const CHANGE_FIELDS = {title: "title", amount: "amount", date: "date", paid_by: 
 const shown = value => value === null || value === undefined || value === "" ? "none"
   : Array.isArray(value) ? value.map(p => p.share ? `${p.name} ${p.share}` : p.name).join(", ") : String(value);
 
-// "Claude added Groceries" with its amount, or "Claude changed Dinner" with what changed.
+// "Claude added Groceries" or "Claude deleted Groceries" with its amount, or "Claude changed
+// Dinner" with what changed.
 function changeRow(change) {
   const row = document.createElement("li");
   row.className = "row";
@@ -321,9 +322,12 @@ function changeRow(change) {
   const detail = document.createElement("span");
   const app = appName(change.app || {});
   const after = change.after || {};
-  if (!change.before) {
-    title.textContent = `${app} ${after.is_reimbursement ? "recorded a reimbursement" : "added " + after.title}`;
-    detail.textContent = [after.amount, after.paid_by && "paid by " + after.paid_by, change.group, ago(change.at)]
+  if (!change.before || !change.after) {
+    const expense = change.after || change.before;
+    const what = expense.is_reimbursement ? "a reimbursement" : expense.title;
+    const verb = !change.after ? "deleted" : expense.is_reimbursement ? "recorded" : "added";
+    title.textContent = `${app} ${verb} ${what}`;
+    detail.textContent = [expense.amount, expense.paid_by && "paid by " + expense.paid_by, change.group, ago(change.at)]
       .filter(Boolean).join(" · ");
   } else {
     title.textContent = `${app} changed ${change.before.title}`;

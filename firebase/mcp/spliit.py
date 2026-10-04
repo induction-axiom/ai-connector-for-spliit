@@ -74,7 +74,12 @@ class Spliit:
         return self.call("GET", "groups.expenses.list", payload)
 
     def expense(self, group_id, expense_id):
-        return self.call("GET", "groups.expenses.get", {"groupId": group_id, "expenseId": expense_id})["expense"]
+        """Spliit finds an expense by its ID alone, whatever group is asked, and deletes and
+        updates the same way: check it is in this group before touching it."""
+        expense = self.call("GET", "groups.expenses.get", {"groupId": group_id, "expenseId": expense_id})["expense"]
+        if expense["groupId"] != group_id:
+            raise SpliitError("not_found")
+        return expense
 
     def balances(self, group_id):
         return self.call("GET", "groups.balances.list", {"groupId": group_id})
@@ -90,3 +95,8 @@ class Spliit:
         self.call("POST", "groups.expenses.update", {
             "groupId": group_id, "expenseId": expense_id, "expenseFormValues": form,
             "participantId": participant_id})
+
+    def delete_expense(self, group_id, expense_id, participant_id):
+        """For good: Spliit keeps no copy, only a line in the group's activity."""
+        self.call("POST", "groups.expenses.delete", {
+            "groupId": group_id, "expenseId": expense_id, "participantId": participant_id})

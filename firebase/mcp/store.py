@@ -4,6 +4,9 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from threading import RLock
 
+# The tools that add an expense, as the change log names them.
+ADDING = {"create_expense", "record_reimbursement"}
+
 
 class MemoryStore:
     """Synthetic tests only; production always uses Firestore."""
@@ -15,6 +18,10 @@ class MemoryStore:
     def add_change(self, record):
         with self.lock:
             self.changes.append(deepcopy(record))
+
+    def added_by_ai(self, expense_id):
+        with self.lock:
+            return any(r["expense_id"] == expense_id and r["tool"] in ADDING for r in self.changes)
 
     def recent_changes(self, count):
         with self.lock:
@@ -43,6 +50,11 @@ class FirestoreStore:
     # AI changes to Spliit, kept for good: the dashboard lists them, newest first.
     def add_change(self, record):
         self.db.collection("ai_changes").add(record, timeout=10)
+
+    def added_by_ai(self, expense_id):
+        from google.cloud.firestore_v1.base_query import FieldFilter
+        query = self.db.collection("ai_changes").where(filter=FieldFilter("expense_id", "==", expense_id))
+        return any(doc.get("tool") in ADDING for doc in query.stream(timeout=10))
 
     def recent_changes(self, count):
         from google.cloud import firestore
