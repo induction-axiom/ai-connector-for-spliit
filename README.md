@@ -6,6 +6,8 @@ connector that runs in your own Firebase project.
 
 > "I paid 84.60 for dinner in Trip, split it evenly."
 >
+> "I paid 3000 yen for ramen in Trip, for Alex and me."
+>
 > "Who owes whom in Trip, and how do we settle up?"
 >
 > "Alex paid me back 15."
@@ -56,7 +58,8 @@ terminal, press ↑ then Enter to try again.
 ### 3. Add your Spliit groups
 
 Open the dashboard and sign in with Google. Paste a group's link from Spliit,
-then choose which member you are. Add as many groups as you like.
+then choose which member you are. Add as many groups as you like. If you
+rename a group in Spliit, the connector picks up the new name.
 
 A group's link is its key: anyone who has it can read and change the group,
 which is how you share it with friends. The dashboard keeps it in your
@@ -94,7 +97,11 @@ The AI gets five read tools (`list_groups`, `get_balances`, `list_expenses`,
 and members, and never sees a group's link or ID. What it records, everyone
 in the group sees, just as if you had entered it in Spliit. Before adding an
 expense, the connector looks for one with the same amount added in the last
-three days, and asks you to confirm if it finds one. Spliit deletes for good,
+three days, and asks you to confirm if it finds one. An expense paid in another
+currency is converted to the group's currency at that day's European Central
+Bank rate, which the connector gets from frankfurter.dev, as Spliit's own form
+does; it sends only the two currency codes and the date. The amount in the
+other currency is kept with the expense. Spliit deletes for good,
 so the AI can delete only expenses your AI apps added, and the log keeps each
 one it deletes, so it can be added again.
 
