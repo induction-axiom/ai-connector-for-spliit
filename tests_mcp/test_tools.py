@@ -86,6 +86,26 @@ class ReadTests(Harness):
         self.assertEqual(self.call("list_categories")["error_code"], "spliit_unavailable")
         self.assertEqual(self.store.data["spliit_last_failure"]["code"], "spliit_unavailable")
 
+    def test_a_group_renamed_in_spliit_goes_by_its_new_name(self):
+        self.spliit.group["name"] = "Japan trip"
+        self.assertEqual(self.call("list_groups")["groups"][0]["name"], "Japan trip")
+        self.assertEqual(self.groups.saved, [{"name": "Japan trip", "id": GROUP_ID, "me": ME}])
+        # Asked by its new name before anything noticed the rename.
+        self.groups.saved = [{"name": "Trip", "id": GROUP_ID, "me": ME}]
+        self.assertTrue(self.call("get_balances", group="japan trip")["ok"])
+        self.assertEqual(self.groups.saved[0]["name"], "Japan trip")
+        # Or by its old one: the change log names it as it is now.
+        self.groups.saved = [{"name": "Trip", "id": GROUP_ID, "me": ME}]
+        self.call("create_expense", group="Trip", title="Ramen", amount="20")
+        self.assertEqual((self.store.changes[-1]["group"], self.groups.saved[0]["name"]), ("Japan trip", "Japan trip"))
+
+    def test_a_rename_to_another_groups_name_is_not_taken(self):
+        self.groups.saved = [{"name": "Trip", "id": GROUP_ID, "me": ME},
+                             {"name": "Japan trip", "id": "otherGroup", "me": ME}]
+        self.spliit.group["name"] = "Japan trip"
+        self.assertEqual([g["name"] for g in self.call("list_groups")["groups"]], ["Trip", "Japan trip"])
+        self.assertEqual([g["name"] for g in self.groups.saved], ["Trip", "Japan trip"])
+
 
 class WriteTests(Harness):
     def test_create_defaults_to_the_owner_paying_for_everyone(self):
@@ -133,9 +153,66 @@ class WriteTests(Harness):
     def test_reimbursement(self):
         result = self.call("record_reimbursement", group="Trip", amount="15", to="Jong", paid_by="Alex")
         self.assertTrue(result["expense"]["is_reimbursement"])
+        dollars = self.call("record_reimbursement", group="Trip", original_amount="100", original_currency="USD",
+                            to="Jong", paid_by="Sam")["expense"]
+        self.assertEqual((dollars["amount"], dollars["original"]["currency"]), ("139.12", "USD"))
         values = self.sent("groups.expenses.create")[0]["expenseFormValues"]
         self.assertEqual((values["isReimbursement"], values["category"], values["paidBy"], values["paidFor"]),
                          (True, 1, ALEX, [{"participant": ME, "shares": 100}]))
+
+    def test_another_currency_is_converted_at_the_days_rate(self):
+        result = self.call("create_expense", group="Trip", title="Ramen", original_amount="3000",
+                           original_currency="JPY", date="2026-10-04")
+        self.assertEqual(self.spliit.rate_requests, [{"date": "2026-10-04", "base": "JPY", "symbols": "CAD"}])
+        values = self.sent("groups.expenses.create")[0]["expenseFormValues"]
+        self.assertEqual((values["amount"], values["originalAmount"], values["originalCurrency"], values["conversionRate"]),
+                         (2709, 3000, "JPY", 0.00903))
+        self.assertEqual((result["expense"]["amount"], result["expense"]["original"]),
+                         ("27.09", {"amount": "3000", "currency": "JPY", "rate": "0.00903"}))
+        self.assertEqual((result["exchange_rate"]["rate"], result["exchange_rate"]["rate_date"]), ("0.00903", "2026-10-02"))
+        listed = self.call("list_expenses", group="Trip")["expenses"][0]
+        self.assertEqual(listed["original"], {"amount": "3000", "currency": "JPY"})
+
+    def test_a_known_amount_sets_the_rate(self):
+        result = self.call("create_expense", group="Trip", title="Ramen", amount="27.40",
+                           original_amount="3000", original_currency="JPY")
+        self.assertEqual(self.spliit.rate_requests, [])
+        self.assertEqual((result["expense"]["amount"], result["expense"]["original"]["rate"]), ("27.40", "0.00913333"))
+        self.assertNotIn("exchange_rate", result)
+        same = self.call("create_expense", group="Trip", title="Taxi", original_amount="9", original_currency="CAD")
+        self.assertNotIn("original", same["expense"])
+        self.assertEqual(same["expense"]["amount"], "9.00")
+
+    def test_conversion_mistakes_come_back_as_arguments_to_fix(self):
+        nothing = self.call("create_expense", group="Trip", title="Ramen")
+        self.assertEqual(nothing["error_code"], "invalid_arguments")
+        half = self.call("create_expense", group="Trip", title="Ramen", original_amount="3000")
+        self.assertIn("together", half["detail"])
+        yen = self.call("create_expense", group="Trip", title="Ramen", original_amount="3000.50", original_currency="JPY")
+        self.assertEqual(yen["detail"], "JPY amounts have no decimals")
+        unknown = self.call("create_expense", group="Trip", title="Ramen", original_amount="30", original_currency="EUR")
+        self.assertEqual((unknown["error_code"], unknown["next_action"]), ("rate_unavailable", "ask_owner_for_amount"))
+        self.spliit.group["currencyCode"] = None
+        custom = self.call("create_expense", group="Trip", title="Ramen", original_amount="30", original_currency="JPY")
+        self.assertIn("no currency code", custom["detail"])
+        self.assertEqual(self.sent("groups.expenses.create"), [])
+
+    def test_update_keeps_the_original_or_the_rate(self):
+        added = self.call("create_expense", group="Trip", title="Ramen", original_amount="3000",
+                          original_currency="JPY", date="2026-10-02")["expense"]
+        card = self.call("update_expense", group="Trip", expense_id=added["id"], amount="27.40")["expense"]
+        self.assertEqual((card["amount"], card["original"]), ("27.40", {"amount": "3000", "currency": "JPY", "rate": "0.00913333"}))
+        more = self.call("update_expense", group="Trip", expense_id=added["id"], original_amount="3500")["expense"]
+        self.assertEqual((more["amount"], more["original"]["rate"]), ("31.97", "0.00913333"))
+        self.assertEqual(len(self.spliit.rate_requests), 1)
+        plain = self.call("update_expense", group="Trip", expense_id=added["id"], original_currency="CAD")
+        self.assertEqual((plain["expense"]["amount"], plain["previous"]["original"]["amount"]), ("31.97", "3500"))
+        self.assertNotIn("original", plain["expense"])
+        values = self.sent("groups.expenses.update")[-1]["expenseFormValues"]
+        self.assertNotIn("originalAmount", values)
+        # An expense without a conversion gets one at its own date's rate.
+        converted = self.call("update_expense", group="Trip", expense_id="e1", original_amount="5000", original_currency="JPY")
+        self.assertEqual((converted["expense"]["amount"], self.spliit.rate_requests[-1]["date"]), ("45.15", "2026-10-01"))
 
     def test_update_keeps_what_it_does_not_change_and_returns_previous(self):
         result = self.call("update_expense", group="Trip", expense_id="e1", amount="50")
@@ -200,8 +277,10 @@ class ContractTests(Harness):
         self.call("create_expense", group="Trip", title="Taxi", amount="9", notes="n", category_id=2,
                   split_mode="BY_SHARES", paid_for=[{"name": "Jong", "share": "2"}, {"name": "Sam", "share": "1"}])
         self.call("record_reimbursement", group="Trip", amount="5", to="Alex")
+        self.call("create_expense", group="Trip", title="Ramen", original_amount="3000", original_currency="JPY")
         self.call("update_expense", group="Trip", expense_id="e1", title="Brunch", amount="10", paid_by="Alex",
                   split_mode="EVENLY", paid_for=[{"name": "Alex"}], date="2026-10-01", category_id=1, notes="x")
+        self.call("update_expense", group="Trip", expense_id="e3", amount="30")
         self.call("delete_expense", group="Trip", expense_id="e2")
         procedures, form_spec = SPEC["procedures"], SPEC["expenseFormValues"]
         used = set()
@@ -235,6 +314,10 @@ class DashboardTests(Harness):
         self.assertIsNone(status["last_failure"])
         self.assertEqual(status["changes"][0]["after"]["title"], "Groceries")
         self.assertNotIn(GROUP_ID, json.dumps(status))
+        self.spliit.group["name"] = "Japan trip"
+        self.assertEqual(self.post("/owner/status").json()["spliit"]["groups"][0]["name"], "Japan trip")
+        self.assertEqual(self.groups.saved[0]["name"], "Japan trip")
+        self.spliit.group["name"] = "Trip"
         self.assertEqual(self.post("/owner/status", headers={"Origin": BASE}).status_code, 403)
         self.spliit.down = True
         down = self.post("/owner/status").json()

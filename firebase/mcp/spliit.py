@@ -6,11 +6,14 @@ send plain JSON inside {"json": ...}; answers are superjson, of which we read "j
 Amounts are integers in the currency's minor unit (cents). A group ID is the only
 credential Spliit has: anyone holding it can read and change the group.
 """
+from decimal import Decimal
 import json
 
 import httpx
 
 SPLIIT = "https://spliit.app"
+# Where Spliit's own expense form gets exchange rates: the European Central Bank's, per day.
+RATES = "https://api.frankfurter.dev/v1/"
 # Currencies Spliit offers whose minor unit is not a hundredth (its src/lib/currency-data.json).
 NO_DECIMALS = {"JPY", "HUF", "ISK", "IDR", "KRW", "VND", "COP"}
 
@@ -30,6 +33,7 @@ class Spliit:
     def __init__(self, on_failure, transport=None):
         self.on_failure = on_failure
         self.http = httpx.Client(base_url=SPLIIT + "/api/trpc/", transport=transport, timeout=20)
+        self.rates = httpx.Client(base_url=RATES, transport=transport, timeout=10)
 
     def call(self, method, procedure, payload=None):
         try:
@@ -83,6 +87,19 @@ class Spliit:
 
     def balances(self, group_id):
         return self.call("GET", "groups.balances.list", {"groupId": group_id})
+
+    def exchange_rate(self, day, base, target):
+        """How much 1 base is in target on day, as Spliit's own form asks for it, and the day
+        the rate is from (the last working day before a weekend or a future date). Only the
+        two currency codes and the day are sent."""
+        try:
+            response = self.rates.get(day.isoformat(), params={"base": base, "symbols": target})
+        except httpx.HTTPError:
+            raise SpliitError("rate_unavailable") from None
+        rate = response.json().get("rates", {}).get(target) if response.status_code == 200 else None
+        if rate is None:
+            raise SpliitError("rate_unavailable", f"No exchange rate from {base} to {target}.")
+        return Decimal(str(rate)), response.json()["date"]
 
     # ---------- Writes ----------
 

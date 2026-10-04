@@ -27,9 +27,9 @@ try {
   if (host === "claude.ai" || host === "claude.com") el("app-name").textContent = "Claude";
   el("description").textContent = "Your AI app is asking to connect to your own private AI connector for Spliit.";
   el("scope").textContent = "Read the Spliit groups you added, with their members, balances and expenses, and add " +
-    "or change expenses and reimbursements as you. Everyone in the group sees those changes. It can't see your " +
-    "group links, delete expenses, or change groups and members. It stays connected while you use it; " +
-    "after 3 months unused, it asks you again.";
+    "or change expenses and reimbursements as you. Everyone in the group sees those changes. It can delete only " +
+    "expenses your AI apps added, and can't see your group links or change groups and members. It stays " +
+    "connected while you use it; after 3 months unused, it asks you again.";
   el("registered").textContent = view.registered_at
     ? new Intl.RelativeTimeFormat(undefined, {numeric: "auto"}).format(
         -Math.max(0, Math.round((Date.now() / 1000 - view.registered_at) / 60)), "minute")

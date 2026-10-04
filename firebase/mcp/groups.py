@@ -1,7 +1,7 @@
 """The owner's saved Spliit groups, kept in Secret Manager.
 
-Each entry is {"name", "id", "me"}: the name the AI and dashboard use, the group ID from
-its link (the only credential Spliit has), and the participant who is the owner. Only
+Each entry is {"name", "id", "me"}: the name the AI and dashboard use, kept in step with
+Spliit's when the group is renamed there, the group ID from its link (the only credential Spliit has), and the participant who is the owner. Only
 this service's account can read or change the secret. It is read on every call, so a
 change in the dashboard takes effect at once.
 """
@@ -29,3 +29,22 @@ class SecretGroups:
                                                 "payload": {"data": json.dumps(groups).encode()}})
         for version in old:
             self.client.destroy_secret_version(request={"name": version.name})
+
+
+def sync_names(store, saved, live):
+    """Take each group's name from Spliit as it is now, so the AI and the dashboard use the
+    name its members see after a rename. live maps a group ID to its Spliit group, or None.
+    A name another saved group already has is not taken, since the AI names groups. Saves
+    only when a name changed, and returns the groups as saved."""
+    taken = {g["name"].casefold() for g in saved}
+    updated = []
+    for entry in saved:
+        name = (live.get(entry["id"]) or {}).get("name")
+        if name and name != entry["name"] and (name.casefold() == entry["name"].casefold()
+                                               or name.casefold() not in taken):
+            taken = (taken - {entry["name"].casefold()}) | {name.casefold()}
+            entry = {**entry, "name": name}
+        updated.append(entry)
+    if updated != saved:
+        store.save(updated)
+    return updated
