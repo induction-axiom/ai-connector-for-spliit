@@ -23,9 +23,10 @@ class MemoryStore:
         with self.lock:
             return any(r["expense_id"] == expense_id and r["tool"] in ADDING for r in self.changes)
 
-    def recent_changes(self, count):
+    def recent_changes(self, count, before=None):
         with self.lock:
-            return deepcopy(sorted(self.changes, key=lambda r: r["at"], reverse=True)[:count])
+            older = [r for r in self.changes if before is None or r["at"] < before]
+            return deepcopy(sorted(older, key=lambda r: r["at"], reverse=True)[:count])
 
     def get(self, key):
         with self.lock:
@@ -56,9 +57,12 @@ class FirestoreStore:
         query = self.db.collection("ai_changes").where(filter=FieldFilter("expense_id", "==", expense_id))
         return any(doc.get("tool") in ADDING for doc in query.stream(timeout=10))
 
-    def recent_changes(self, count):
+    def recent_changes(self, count, before=None):
         from google.cloud import firestore
-        query = self.db.collection("ai_changes").order_by("at", direction=firestore.Query.DESCENDING).limit(count)
+        query = self.db.collection("ai_changes").order_by("at", direction=firestore.Query.DESCENDING)
+        if before is not None:
+            query = query.start_after({"at": before})
+        query = query.limit(count)
         return [doc.to_dict() for doc in query.stream(timeout=10)]
 
     def ref(self, key):

@@ -152,8 +152,7 @@ function renderStatus() {
   el("fact-last-error-row").classList.toggle("hidden", !recent);
   el("spliit-facts").classList.toggle("hidden", !down && !recent);
   el("apps-list").replaceChildren(...(apps.length ? apps.map(appRow) : [emptyRow("No apps are connected yet.")]));
-  const changes = status.changes || [];
-  el("changes-list").replaceChildren(...(changes.length ? changes.map(changeRow) : [emptyRow("Nothing yet.")]));
+  showChanges(status.changes || [], status.more_changes, false);
 
   const diagnostics = status.diagnostics || {};
   el("mcp-url").textContent = diagnostics.mcp_endpoint || "—";
@@ -350,6 +349,29 @@ function changeRow(change) {
   row.append(text);
   return row;
 }
+
+// Each page of changes continues from the oldest one shown.
+let oldestChange = null;
+
+function showChanges(changes, more, append) {
+  if (append) el("changes-list").append(...changes.map(changeRow));
+  else el("changes-list").replaceChildren(...(changes.length ? changes.map(changeRow) : [emptyRow("Nothing yet.")]));
+  if (changes.length) oldestChange = changes.at(-1).at;
+  el("changes-more").classList.toggle("hidden", !more);
+}
+
+el("changes-more").onclick = async () => {
+  el("changes-more").disabled = true;
+  try {
+    const page = await api("/owner/changes", {before: oldestChange});
+    showChanges(page.changes || [], page.more_changes, true);
+  } catch (error) {
+    if (error instanceof OwnerSessionExpired) return expireSession();
+    say("message", "Older changes couldn't be loaded. Try again.", "danger");
+  } finally {
+    el("changes-more").disabled = false;
+  }
+};
 
 // ---------- AI apps ----------
 

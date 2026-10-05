@@ -337,6 +337,19 @@ class DashboardTests(Harness):
         self.assertEqual((down["spliit"]["state"], down["last_failure"]["code"]),
                          ("spliit_unavailable", "spliit_unavailable"))
 
+    def test_changes_come_ten_at_a_time(self):
+        for at in range(1, 13):
+            self.store.add_change({"at": at, "app": {}, "tool": "create_expense", "group": "Trip",
+                                   "expense_id": str(at), "before": None, "after": {"title": str(at)}})
+        status = self.post("/owner/status").json()
+        self.assertEqual([c["at"] for c in status["changes"]], list(range(12, 2, -1)))
+        self.assertTrue(status["more_changes"])
+        older = self.post("/owner/changes", {"before": 3}).json()
+        self.assertEqual(([c["at"] for c in older["changes"]], older["more_changes"]), ([2, 1], False))
+        for before in (None, "3", True):
+            self.assertEqual(self.post("/owner/changes", {"before": before}).status_code, 400)
+        self.assertEqual(self.client.post("/owner/changes", json={"before": 3}).status_code, 403)
+
     def test_adding_a_group_from_its_link(self):
         self.groups.saved = []
         self.assertEqual(self.post("/owner/groups/lookup", {"link": "https://example.com/x"}).json()["result"],
