@@ -94,27 +94,27 @@ const conversationCSS = `
     --surface:#1c1c1e; --ink:#f5f5f7; --muted:#a1a1a6; --line:#333336;
     --blue:#0071e3; --green:#30d158; } }
   * {box-sizing:border-box} body {margin:0; background:var(--bg); color:var(--ink);
-    font:21px/1.48 -apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;
+    font:17px/1.48 -apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;
     -webkit-font-smoothing:antialiased} main {padding:38px; width:${WIDTH}px}
-  header {display:flex; align-items:center; justify-content:space-between; gap:18px; margin:0 6px 26px}
-  header strong {font-size:22px; letter-spacing:-.025em} .sample {font-size:16px;
-    background:var(--line); color:var(--muted); padding:5px 14px; border-radius:24px; white-space:nowrap}
-  .user {max-width:760px; margin:0 0 22px auto; padding:20px 24px; border-radius:28px 28px 8px 28px;
-    background:var(--blue); color:#fff} .answer {padding:28px 32px; margin-bottom:24px;
-    background:var(--surface); border-radius:28px} p {margin:0 0 18px} p:last-child {margin:0}
-  .tool {display:inline-block; font:15px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
-    color:var(--muted); background:var(--line); padding:5px 10px; border-radius:9px; margin-bottom:18px}
-  h1 {font-size:34px; letter-spacing:-.035em; line-height:1.16; margin:0 0 20px}
+  header {display:flex; align-items:center; justify-content:space-between; gap:18px; margin:0 6px 22px}
+  header strong {font-size:18px; letter-spacing:-.025em} .sample {font-size:13px;
+    background:var(--line); color:var(--muted); padding:4px 12px; border-radius:24px; white-space:nowrap}
+  .user {max-width:620px; margin:0 0 18px auto; padding:16px 20px; border-radius:24px 24px 6px 24px;
+    background:var(--blue); color:#fff} .answer {padding:24px 28px; margin-bottom:20px;
+    background:var(--surface); border-radius:24px} p {margin:0 0 14px} p:last-child {margin:0}
+  .tool {display:inline-block; font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
+    color:var(--muted); background:var(--line); padding:4px 8px; border-radius:8px; margin-bottom:14px}
+  h1 {font-size:28px; letter-spacing:-.035em; line-height:1.16; margin:0 0 16px}
   .success {color:var(--green)} .muted {color:var(--muted)}
   dl {margin:0 0 18px} dl div {display:flex; justify-content:space-between; padding:12px 0;
     border-top:1px solid var(--line); gap:24px} dt {color:var(--muted)} dd {margin:0; font-weight:600}
-  .small {font-size:17px} .balance {width:100%; border-collapse:collapse; margin:8px 0 24px}
-  .balance td {padding:10px 0; border-top:1px solid var(--line)} .balance td:last-child {text-align:right; font-weight:600}
-  .transfers {margin:0 0 18px; padding:0; list-style:none} .transfers li {display:flex;
-    justify-content:space-between; padding:12px 0; border-top:1px solid var(--line)}
-  footer {margin:4px 6px 0; color:var(--muted); font-size:15px; line-height:1.5}
+  .small {font-size:14px} .balance {width:100%; border-collapse:collapse; margin:6px 0 20px}
+  .balance td {padding:8px 0; border-top:1px solid var(--line)} .balance td:last-child {text-align:right; font-weight:600}
+  .transfers {margin:0 0 14px; padding:0; list-style:none} .transfers li {display:flex;
+    justify-content:space-between; padding:10px 0; border-top:1px solid var(--line)}
+  footer {margin:4px 6px 0; color:var(--muted); font-size:13px; line-height:1.5}
   .mobile-example {padding:32px}
-  .mobile-example footer {text-align:center; font-size:14px}
+  .mobile-example footer {text-align:center}
   .mobile-layout {display:grid; grid-template-columns:420px 428px; gap:64px; align-items:center;
     justify-content:center; margin:26px 0 28px}
   .intro {text-align:left} .intro h1 {font-size:54px; line-height:1.05; margin:0}
@@ -237,7 +237,8 @@ try {
 
     for (const [name, body] of Object.entries(examples)) {
       const mobile = name === "example-record";
-      await page.setViewportSize({width: WIDTH, height: 1100});
+      // A short viewport, so the full-page capture ends where the content does.
+      await page.setViewportSize({width: WIDTH, height: 400});
       await page.setContent(`<!doctype html><html lang="en"><meta charset="utf-8">
         <title>Spliit connector — simulated example</title><style>${mobile ? DEVICE_CSS : ""}\n${conversationCSS}</style><main class="${mobile ? "mobile-example" : ""}">${body}</main></html>`);
       await page.evaluate(() => document.fonts.ready);
