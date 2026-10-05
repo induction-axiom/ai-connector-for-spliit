@@ -79,7 +79,7 @@ In the dashboard: **AI apps** → your app → **How to connect**.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/connect-chatgpt-dark.png">
-  <img alt="The dashboard's ChatGPT connection guide, with step-by-step instructions and an example MCP address to copy" src="docs/images/connect-chatgpt-light.png" width="560">
+  <img alt="The dashboard's ChatGPT connection guide, with step-by-step instructions and an example MCP address to copy" src="docs/images/connect-chatgpt-light.png" width="680">
 </picture>
 
 When the AI app sends you to approve the connection, only allow it if you

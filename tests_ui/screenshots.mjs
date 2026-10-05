@@ -9,6 +9,8 @@ const OUTPUT = new URL("../docs/images/", import.meta.url);
 // Upstream iPhone 14 Pro frame, pinned with its MIT license in templates/.
 const DEVICE_CSS = readFileSync(new URL("templates/iphone-14-pro.css", import.meta.url), "utf8");
 const BASE = "https://owner.example";
+// Every image is this many CSS pixels wide, so the README shows them at one width and text size.
+const WIDTH = 1040;
 const NOW = new Date("2026-10-04T18:00:00Z");
 const seconds = NOW.getTime() / 1000;
 const apps = [
@@ -93,7 +95,7 @@ const conversationCSS = `
     --blue:#0071e3; --green:#30d158; } }
   * {box-sizing:border-box} body {margin:0; background:var(--bg); color:var(--ink);
     font:21px/1.48 -apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;
-    -webkit-font-smoothing:antialiased} main {padding:38px; width:960px}
+    -webkit-font-smoothing:antialiased} main {padding:38px; width:${WIDTH}px}
   header {display:flex; align-items:center; justify-content:space-between; gap:18px; margin:0 6px 26px}
   header strong {font-size:22px; letter-spacing:-.025em} .sample {font-size:16px;
     background:var(--line); color:var(--muted); padding:5px 14px; border-radius:24px; white-space:nowrap}
@@ -111,7 +113,7 @@ const conversationCSS = `
   .transfers {margin:0 0 18px; padding:0; list-style:none} .transfers li {display:flex;
     justify-content:space-between; padding:12px 0; border-top:1px solid var(--line)}
   footer {margin:4px 6px 0; color:var(--muted); font-size:15px; line-height:1.5}
-  .mobile-example {width:1040px; padding:32px}
+  .mobile-example {padding:32px}
   .mobile-example footer {text-align:center; font-size:14px}
   .mobile-layout {display:grid; grid-template-columns:420px 428px; gap:64px; align-items:center;
     justify-content:center; margin:26px 0 28px}
@@ -206,7 +208,7 @@ mkdirSync(OUTPUT, {recursive: true});
 const browser = await chromium.launch();
 try {
   for (const colorScheme of ["light", "dark"]) {
-    const context = await browser.newContext({viewport: {width: 1120, height: 1100},
+    const context = await browser.newContext({viewport: {width: WIDTH, height: 1100},
       deviceScaleFactor: 1.5, colorScheme, locale: "en-CA", timezoneId: "America/Toronto",
       reducedMotion: "reduce", serviceWorkers: "block"});
     const page = await context.newPage();
@@ -215,27 +217,27 @@ try {
       animations: "disabled", ...options});
 
     const groups = await page.locator("#groups-list").locator("..").boundingBox();
-    await save("overview", {clip: {x: 0, y: 0, width: 1120, height: Math.ceil(groups.y + groups.height + 24)}});
+    await save("overview", {clip: {x: 0, y: 0, width: WIDTH, height: Math.ceil(groups.y + groups.height + 24)}});
 
     // Crop the actual change log, including its explanatory heading and note.
     const changes = page.locator("#changes-list").locator("..");
     await changes.scrollIntoViewIfNeeded();
     const changesBox = await changes.boundingBox();
     const headingBox = await changes.locator("xpath=preceding-sibling::div[1]").boundingBox();
-    await save("ai-changes", {clip: {x: 28, y: headingBox.y - 18, width: 1064,
+    await save("ai-changes", {clip: {x: 0, y: headingBox.y - 18, width: WIDTH,
       height: Math.ceil(changesBox.y + changesBox.height + 24 - (headingBox.y - 18))}});
 
     await page.locator('[data-guide="chatgpt"]').click();
     await expect(page.locator("#guide")).toBeVisible();
     await page.clock.runFor(500);
     const guideBox = await page.locator("#guide").boundingBox();
-    await save("connect-chatgpt", {clip: {x: guideBox.x - 48, y: guideBox.y - 48,
-      width: guideBox.width + 96, height: guideBox.height + 96}});
+    await save("connect-chatgpt", {clip: {x: 0, y: guideBox.y - 48,
+      width: WIDTH, height: guideBox.height + 96}});
     if (errors.length) throw new Error(errors.join("\n"));
 
     for (const [name, body] of Object.entries(examples)) {
       const mobile = name === "example-record";
-      await page.setViewportSize({width: mobile ? 1040 : 960, height: 1100});
+      await page.setViewportSize({width: WIDTH, height: 1100});
       await page.setContent(`<!doctype html><html lang="en"><meta charset="utf-8">
         <title>Spliit connector — simulated example</title><style>${mobile ? DEVICE_CSS : ""}\n${conversationCSS}</style><main class="${mobile ? "mobile-example" : ""}">${body}</main></html>`);
       await page.evaluate(() => document.fonts.ready);
