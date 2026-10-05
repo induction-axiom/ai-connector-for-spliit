@@ -4,13 +4,16 @@ Ask Gemini, Claude or ChatGPT about your shared expenses in
 [Spliit](https://spliit.app), and tell it about new ones, from a private
 connector that runs in your own Firebase project.
 
-> "I paid 84.60 for dinner in Trip, split it evenly."
->
-> "I paid 3000 yen for ramen in Trip, for Alex and me."
->
-> "Who owes whom in Trip, and how do we settle up?"
->
-> "Alex paid me back 15."
+Just paid? Dictate a message to your AI app on your phone, and let it record
+the shared expense in Spliit:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/example-record-dark.png">
+  <img alt="Simulated phone conversation: the user dictates a dinner expense by voice, and the AI records 84.60 CAD in Spliit, split evenly with Alex and Sam at 28.20 CAD each" src="docs/images/example-record-light.png" width="680">
+</picture>
+
+All images use made-up data. Conversations are illustrations; the dashboard
+screenshots show the actual interface.
 
 - **Yours alone.** Each person deploys their own copy into their own Firebase
   project, with their own group links. Your data goes from Spliit to your
@@ -23,6 +26,11 @@ connector that runs in your own Firebase project.
 - **One page to manage it.** The dashboard holds your group links, shows
   whether Spliit is answering, lists the AI apps you've connected, and lists
   every change they made.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.png">
+  <img alt="Dashboard overview: Claude and ChatGPT are connected, with Trip and Apartment ready to use and no private group links shown" src="docs/images/overview-light.png" width="680">
+</picture>
 
 This project is unofficial and not affiliated with Spliit. It uses the API
 Spliit's own web app uses, which is not published and can change without
@@ -69,9 +77,21 @@ project's Secret Manager, and your AI apps never see it.
 
 In the dashboard: **AI apps** → your app → **How to connect**.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/connect-chatgpt-dark.png">
+  <img alt="The dashboard's ChatGPT connection guide, with step-by-step instructions and an example MCP address to copy" src="docs/images/connect-chatgpt-light.png" width="560">
+</picture>
+
 When the AI app sends you to approve the connection, only allow it if you
 just chose Connect in that app yourself. Someone else can send you a link
 that looks the same.
+
+Then ask who owes whom, or record a repayment you've received:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/example-settle-dark.png">
+  <img alt="Simulated conversation: Spliit suggests two payments to settle Trip; after Alex repays Jamie 15 CAD, the AI records it and explains the remaining balance" src="docs/images/example-settle-light.png" width="680">
+</picture>
 
 ## Later
 
@@ -90,6 +110,14 @@ the connector can read; the AI app sign-ins you approved; the last error
 Spliit gave; and a log of every expense your AI apps added, changed or
 deleted, with what it was before and after. The log stays until you delete
 the project.
+
+You can review what each AI app recorded, including an expense's old and new
+amounts when it was changed:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/ai-changes-dark.png">
+  <img alt="Dashboard AI change log: a repayment, a dinner corrected from 84.60 to 90.00, a ramen expense retaining its original JPY amount, and the original dinner entry" src="docs/images/ai-changes-light.png" width="680">
+</picture>
 
 The AI gets five read tools (`list_groups`, `get_balances`, `list_expenses`,
 `get_expense`, `list_categories`) and four that record (`create_expense`,
@@ -128,6 +156,13 @@ Run the tests, with the packages in `firebase/mcp/requirements.txt` installed:
 python3 -m unittest discover -s tests_mcp -t tests_mcp
 python3 -m unittest discover -s tests_deployment -t tests_deployment
 (cd tests_ui && npm ci && npx playwright test)
+```
+
+Regenerate the README images with synthetic data, without connecting to a
+deployment or Spliit:
+
+```sh
+node tests_ui/screenshots.mjs
 ```
 
 Spliit's API is the tRPC one its web app uses. `tests_mcp/spliit_api.json`
