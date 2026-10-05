@@ -8,15 +8,20 @@ const BASE = "https://owner.test";
 const LINK = "https://spliit.app/groups/secretGroupId123456789";
 
 const FIREBASE_APP = "export const initializeApp = config => ({config});";
-const FIREBASE_AUTH = `
+const OWNER = "owner@example.com";
+// Signed in as `email` on load; signing out tells the page, as Firebase does.
+const firebaseAuth = email => `
+  let listener;
   export const getAuth = app => ({app});
   export class GoogleAuthProvider { setCustomParameters() {} }
   export const browserSessionPersistence = "session";
   export const setPersistence = async () => {};
   export const signInWithPopup = async () => {};
-  export const signOut = async () => {};
-  export const onAuthStateChanged = (auth, callback) => setTimeout(() => callback(
-    {email: "owner@example.com", getIdToken: async () => "synthetic-owner-token"}));
+  export const signOut = async () => listener(null);
+  export const onAuthStateChanged = (auth, callback) => {
+    listener = callback;
+    setTimeout(() => callback({email: "${email}", getIdToken: async () => "synthetic-token"}));
+  };
 `;
 
 const TRIP = {name: "Trip", state: "ok", currency: "CAD", members: ["Jong", "Alex", "Sam"], me: "Jong"};
@@ -35,7 +40,8 @@ function status(state) {
 }
 
 // Serve the dashboard; each /owner/groups/add waits until the test settles it.
-async function openDashboard(page, {groups = [], changes = [], spliit = "connected", lastFailure = null} = {}) {
+async function openDashboard(page, {groups = [], changes = [], spliit = "connected", lastFailure = null,
+    email = OWNER} = {}) {
   const state = {groups, changes, spliit, lastFailure, adds: [], removed: [], errors: []};
   page.on("pageerror", error => state.errors.push(error.message));
   await page.route("**/*", async route => {
@@ -43,7 +49,7 @@ async function openDashboard(page, {groups = [], changes = [], spliit = "connect
     const json = body => route.fulfill({contentType: "application/json", body: JSON.stringify(body)});
     if (url.hostname === "www.gstatic.com")
       return route.fulfill({contentType: "text/javascript",
-        body: url.pathname.endsWith("firebase-auth.js") ? FIREBASE_AUTH : FIREBASE_APP});
+        body: url.pathname.endsWith("firebase-auth.js") ? firebaseAuth(email) : FIREBASE_APP});
     if (url.origin !== BASE) return route.fulfill({status: 404, body: ""});
     if (url.pathname === "/owner")
       return route.fulfill({contentType: "text/html", body: readFileSync(new URL("owner.html", STATIC))});
@@ -53,6 +59,10 @@ async function openDashboard(page, {groups = [], changes = [], spliit = "connect
         body: readFileSync(new URL(name, STATIC))});
     }
     if (url.pathname === "/firebase-config") return json({authDomain: "example.test"});
+    if (url.pathname === "/owner/status" && email !== OWNER) return new Promise(settle => {
+      state.turnAway = () => route.fulfill({status: 403, contentType: "application/json",
+        body: JSON.stringify({error: "owner_login_required"})}).then(settle);
+    });
     if (url.pathname === "/owner/status") return json(status(state));
     if (url.pathname === "/owner/changes") {
       const older = state.changes.filter(c => c.at < route.request().postDataJSON().before);
@@ -201,5 +211,20 @@ test("the ChatGPT guide links to Plugins and offers the address to paste", async
   const links = await guide.locator("a.step-link").evaluateAll(
     anchors => anchors.map(a => [a.textContent, a.href, a.target]));
   expect(links).toContainEqual(["Open ChatGPT Plugins", "https://chatgpt.com/plugins", "_blank"]);
+  expect(state.errors).toEqual([]);
+});
+
+test("another Google account is turned away before the dashboard shows", async ({page}) => {
+  const state = await openDashboard(page, {email: "someone@example.com"});
+  await expect(page.locator("#signin-message")).toHaveText("Checking your account…");
+  await expect.poll(() => typeof state.turnAway).toBe("function");
+  await expect(page.locator("#overview-view")).toBeHidden();
+  await expect(page.locator("#account")).toBeHidden();
+  await state.turnAway();
+  await expect(page.locator("#signin-message")).toHaveText(
+    "someone@example.com doesn't own this deployment. Sign in with the account that does.");
+  await expect(page.locator("#signin-message")).toHaveAttribute("data-tone", "danger");
+  await expect(page.locator("#signin")).toBeEnabled();
+  await expect(page.locator("#overview-view")).toBeHidden();
   expect(state.errors).toEqual([]);
 });
