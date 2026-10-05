@@ -26,6 +26,8 @@ Rate = Annotated[str, Field(pattern=r"^\d{1,9}(\.\d{1,12})?$", description=(
 GroupName = Annotated[str, Field(min_length=1, max_length=100, description="A name from list_groups")]
 PersonName = Annotated[str, Field(min_length=1, max_length=100, description="A member's name from list_groups")]
 ExpenseId = Annotated[str, Field(min_length=1, max_length=64)]
+Day = Annotated[Date, Field(description=(
+    "The day it was paid, as the owner's calendar has it: for today, the owner's local date, not UTC"))]
 Title = Annotated[str, Field(min_length=2, max_length=200)]
 Notes = Annotated[str, Field(max_length=5000)]
 SplitMode = Literal["EVENLY", "BY_SHARES", "BY_PERCENTAGE", "BY_AMOUNT"]
@@ -320,11 +322,11 @@ def register(server, spliit, groups, changes, who, owner_url, connector, securit
     def create_expense(
         group: GroupName,
         title: Title,
+        date: Day,
         amount: Amount | None = None,
         paid_by: PersonName | None = None,
         split_mode: SplitMode = "EVENLY",
         paid_for: Annotated[list[Portion] | None, Field(max_length=100)] = None,
-        date: Date | None = None,
         category_id: Annotated[int, Field(ge=0)] = 0,
         notes: Notes | None = None,
         original_amount: OriginalAmount | None = None,
@@ -341,19 +343,18 @@ def register(server, spliit, groups, changes, who, owner_url, connector, securit
         and the rate follows from the two. Balances count only the group-currency amount.
         paid_by defaults to the owner; paid_for defaults to every member, split evenly.
         With BY_AMOUNT the shares are in the group currency and must add up to amount;
-        with BY_PERCENTAGE, to 100. date defaults to today. If error_code is possible_duplicate, nothing was created:
-        an expense with the same amount was added in the last 3 days. Show the owner
-        possible_duplicates and call again with allow_duplicate true only if they confirm.
-        Never repeat a call that may have succeeded; read with list_expenses first.
+        with BY_PERCENTAGE, to 100. If error_code is possible_duplicate, nothing was
+        created: an expense with the same amount was added in the last 3 days. Show the
+        owner possible_duplicates and call again with allow_duplicate true only if they
+        confirm. Never repeat a call that may have succeeded; read with list_expenses first.
         """
         def work():
             entry, live = load(group)
             code = live["currencyCode"]
-            day = date or Date.today()
-            minor, conversion, rate = converted(live, day, amount, original_amount, original_currency,
+            minor, conversion, rate = converted(live, date, amount, original_amount, original_currency,
                                                 conversion_rate, spliit.exchange_rate)
             portions = paid_for or [Portion(name=p["name"]) for p in live["participants"]]
-            form = {"expenseDate": day.isoformat(), "title": title, "category": category_id, "amount": minor,
+            form = {"expenseDate": date.isoformat(), "title": title, "category": category_id, "amount": minor,
                     "paidBy": person(live, paid_by) if paid_by else entry["me"], "splitMode": split_mode,
                     "paidFor": [{"participant": person(live, p.name), "shares": to_shares(split_mode, p.share, code)}
                                 for p in portions],
@@ -366,9 +367,9 @@ def register(server, spliit, groups, changes, who, owner_url, connector, securit
     def record_reimbursement(
         group: GroupName,
         to: PersonName,
+        date: Day,
         amount: Amount | None = None,
         paid_by: PersonName | None = None,
-        date: Date | None = None,
         notes: Notes | None = None,
         original_amount: OriginalAmount | None = None,
         original_currency: Currency | None = None,
@@ -380,10 +381,9 @@ def register(server, spliit, groups, changes, who, owner_url, connector, securit
         create_expense."""
         def work():
             entry, live = load(group)
-            day = date or Date.today()
-            minor, conversion, rate = converted(live, day, amount, original_amount, original_currency,
+            minor, conversion, rate = converted(live, date, amount, original_amount, original_currency,
                                                 conversion_rate, spliit.exchange_rate)
-            form = {"expenseDate": day.isoformat(), "title": "Reimbursement",
+            form = {"expenseDate": date.isoformat(), "title": "Reimbursement",
                     "category": 1,  # Spliit's Payment category, as its own reimbursement form uses
                     "amount": minor,
                     "paidBy": person(live, paid_by) if paid_by else entry["me"], "splitMode": "EVENLY",

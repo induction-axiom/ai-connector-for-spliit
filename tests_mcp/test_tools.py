@@ -8,6 +8,8 @@ import test_oauth
 SPEC = json.loads((ROOT / "tests_mcp/spliit_api.json").read_text())
 OWNER = {"Origin": BASE, "Authorization": "Bearer synthetic-owner-login"}
 LINK = f"https://spliit.app/groups/{GROUP_ID}/expenses?ref=share"
+# The date most tests record an expense on; date is required.
+DAY = "2026-10-02"
 
 
 class Harness(unittest.TestCase):
@@ -22,6 +24,8 @@ class Harness(unittest.TestCase):
     mcp = test_oauth.OAuthTests.mcp
 
     def call(self, name, **arguments):
+        if name in {"create_expense", "record_reimbursement"}:
+            arguments.setdefault("date", DAY)
         if not hasattr(self, "token"):
             self.token = self.tokens()["access_token"]
         result = self.mcp(self.token, "tools/call", {"name": name, "arguments": arguments}).json()["result"]
@@ -118,6 +122,15 @@ class WriteTests(Harness):
                          (8460, ME, "EVENLY", "2026-10-02"))
         self.assertEqual([p["participant"] for p in values["paidFor"]], [ME, ALEX, SAM])
         self.assertEqual(result["expense"]["amount"], "84.60")
+
+    def test_a_new_expense_needs_its_date(self):
+        # Spliit dates by calendar day, and only the AI app knows the owner's.
+        for name, arguments in (("create_expense", {"title": "Ramen", "amount": "20"}),
+                                ("record_reimbursement", {"amount": "5", "to": "Alex"})):
+            result = self.mcp(self.tokens()["access_token"], "tools/call",
+                              {"name": name, "arguments": {"group": "Trip", **arguments}}).json()["result"]
+            self.assertTrue(result["isError"], name)
+        self.assertEqual(self.sent("groups.expenses.create"), [])
 
     def test_create_converts_shares_for_each_split_mode(self):
         self.call("create_expense", group="Trip", title="Hotel", amount="300", split_mode="BY_PERCENTAGE",
