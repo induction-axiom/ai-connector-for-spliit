@@ -25,6 +25,7 @@ cookies/
 *.sqlite
 *.sqlite3
 *.db
+*_export.csv
 
 # Tooling and build output
 .DS_Store
