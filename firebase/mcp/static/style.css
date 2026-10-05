@@ -237,6 +237,7 @@ input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 4px co
 .members input { width: auto; margin: 0; }
 #group-cancel { margin-top: 16px; }
 .panel .rows + .facts { margin-top: 24px; }
+.panel .rows + .link-button { margin-top: 16px; }
 
 /* ---------- Small screens ---------- */
 @media (max-width: 900px) {

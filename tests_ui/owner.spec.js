@@ -26,7 +26,8 @@ function status(state) {
   return {
     spliit: {state: state.spliit, groups: state.groups},
     last_failure: state.lastFailure,
-    changes: state.changes,
+    changes: state.changes.slice(0, 10),
+    more_changes: state.changes.length > 10,
     apps: [],
     diagnostics: {connector_version: "test", repository: "example/example", project_id: "your-project",
       groups_secret: "spliit-groups", auth_database: "(default)", mcp_endpoint: BASE + "/mcp"},
@@ -53,6 +54,10 @@ async function openDashboard(page, {groups = [], changes = [], spliit = "connect
     }
     if (url.pathname === "/firebase-config") return json({authDomain: "example.test"});
     if (url.pathname === "/owner/status") return json(status(state));
+    if (url.pathname === "/owner/changes") {
+      const older = state.changes.filter(c => c.at < route.request().postDataJSON().before);
+      return json({changes: older.slice(0, 10), more_changes: older.length > 10});
+    }
     if (url.pathname === "/owner/groups/lookup") {
       const {link} = route.request().postDataJSON();
       return json(link === LINK
@@ -167,6 +172,21 @@ test("AI changes show an amount paid in another currency", async ({page}) => {
   await expect(rows.nth(0)).toContainText("amount 27.09 → 27.40 · Trip");
   await expect(rows.nth(0)).not.toContainText("paid in");
   await expect(rows.nth(1)).toContainText("27.09 (3000 JPY) · paid by Jong · Trip");
+  expect(state.errors).toEqual([]);
+});
+
+test("AI changes show ten at a time, then older ones on request", async ({page}) => {
+  const expense = {title: "Coffee", amount: "4.00", paid_by: "Jong"};
+  const changes = Array.from({length: 13}, (_, i) => ({at: 1000 - i, app: CLAUDE, tool: "create_expense",
+    group: "Trip", before: null, after: {...expense, title: `Coffee ${i + 1}`}}));
+  const state = await openDashboard(page, {groups: [TRIP], changes});
+  const rows = page.locator("#changes-list li");
+  await expect(rows).toHaveCount(10);
+  await expect(rows.nth(9)).toContainText("Claude added Coffee 10");
+  await page.locator("#changes-more").click();
+  await expect(rows).toHaveCount(13);
+  await expect(rows.nth(12)).toContainText("Claude added Coffee 13");
+  await expect(page.locator("#changes-more")).toBeHidden();
   expect(state.errors).toEqual([]);
 });
 

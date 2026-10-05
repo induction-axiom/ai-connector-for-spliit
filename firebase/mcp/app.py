@@ -51,8 +51,10 @@ def verify_owner(raw, config, max_age=CONSENT_AUTH_AGE):
 
 
 RATE_LIMITS = {"/register": 12, "/authorize": 30, "/consent/start": 30, "/consent/finish": 30,
-               "/token": 60, "/owner/status": 60, "/owner/groups/lookup": 20, "/owner/groups/add": 10,
+               "/token": 60, "/owner/status": 60, "/owner/changes": 60, "/owner/groups/lookup": 20, "/owner/groups/add": 10,
                "/owner/groups/remove": 10, "/owner/preview": 30, "/owner/apps/disconnect": 10}
+# The dashboard lists AI changes this many at a time.
+CHANGES_PAGE = 10
 MAX_QUERY_BYTES = 4096
 MAX_BODY_BYTES = 16384
 # The dashboard shows when Spliit last failed a request, and why.
@@ -390,7 +392,7 @@ def create_app(config, store, owner_verifier, groups, transport=None):
     async def owner_status(body):
         return JSONResponse({"spliit": await anyio.to_thread.run_sync(check_groups),
                              "last_failure": await anyio.to_thread.run_sync(store.get, LAST_FAILURE),
-                             "changes": await anyio.to_thread.run_sync(store.recent_changes, 50),
+                             **await anyio.to_thread.run_sync(changes_page, None),
                              "apps": await anyio.to_thread.run_sync(provider.connected_apps),
                              "diagnostics": {"connector_version": VERSION,
                                              "commit": BUILD.get("commit"),
@@ -400,6 +402,19 @@ def create_app(config, store, owner_verifier, groups, transport=None):
                                              "groups_secret": config.groups_secret,
                                              "project_id": config.project_id,
                                              "mcp_endpoint": config.resource}})
+
+    def changes_page(before):
+        """A page of AI changes, newest first, and whether older ones remain."""
+        page = store.recent_changes(CHANGES_PAGE + 1, before)
+        return {"changes": page[:CHANGES_PAGE], "more_changes": len(page) > CHANGES_PAGE}
+
+    @owner_endpoint
+    async def owner_changes(body):
+        """Older AI changes: those before the oldest the dashboard shows."""
+        before = body.get("before")
+        if isinstance(before, bool) or not isinstance(before, (int, float)):
+            return JSONResponse({"error": "request_invalid"}, 400)
+        return JSONResponse(await anyio.to_thread.run_sync(changes_page, before))
 
     def find_group(link):
         """The group a pasted link points to, or a result code saying why not."""
@@ -480,6 +495,7 @@ def create_app(config, store, owner_verifier, groups, transport=None):
         Route("/consent/start", consent_start, methods=["POST"]),
         Route("/consent/finish", consent_finish, methods=["POST"]),
         Route("/owner/status", owner_status, methods=["POST"]),
+        Route("/owner/changes", owner_changes, methods=["POST"]),
         Route("/owner/groups/lookup", owner_group_lookup, methods=["POST"]),
         Route("/owner/groups/add", owner_group_add, methods=["POST"]),
         Route("/owner/groups/remove", owner_group_remove, methods=["POST"]),
