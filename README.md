@@ -1,6 +1,6 @@
 # Private AI connector for Spliit
 
-Ask Gemini, Claude or ChatGPT about your shared expenses in
+Ask Gemini, Claude, ChatGPT or any other MCP app about your shared expenses in
 [Spliit](https://spliit.app), and tell it about new ones, from a private
 connector that runs in your own Firebase project.
 
