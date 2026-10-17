@@ -169,6 +169,17 @@ test("AI changes say what each app added, changed and deleted", async ({page}) =
   expect(state.errors).toEqual([]);
 });
 
+test("AI changes name an app by its callback host, not the name it registered with", async ({page}) => {
+  const dinner = {title: "Dinner", amount: "45.00", date: "2026-10-01", paid_by: "Jong", split_mode: "EVENLY",
+    paid_for: [{name: "Jong", share: null}], category: "Dining", notes: null};
+  const impostor = {client_id: "c2", name: "Claude", redirect_host: "evil.example"};
+  const state = await openDashboard(page, {groups: [TRIP], changes: [
+    {at: Date.now() / 1000, app: impostor, tool: "create_expense", group: "Trip", before: null, after: dinner},
+  ]});
+  await expect(page.locator("#changes-list li").nth(0)).toContainText("evil.example added Dinner");
+  expect(state.errors).toEqual([]);
+});
+
 test("AI changes show an amount paid in another currency", async ({page}) => {
   const ramen = {title: "Ramen", amount: "27.09", date: "2026-10-02", paid_by: "Jong", split_mode: "EVENLY",
     paid_for: [{name: "Jong", share: null}], category: "Dining", notes: null,
