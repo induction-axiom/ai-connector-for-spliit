@@ -381,6 +381,7 @@ function appName(app) {
   if (host === "oauth-redirect.googleusercontent.com") return "Gemini";
   if (host === "chatgpt.com") return "ChatGPT";
   if (host === "claude.ai" || host === "claude.com") return "Claude";
+  if (host === "agent.meta.ai") return "Muse";
   return host || "Unknown app";
 }
 
@@ -462,44 +463,35 @@ function external(href, text, className = "") {
   return link;
 }
 
-// Where Gemini Spark lists and adds custom apps, checked September 2026.
-const GEMINI_APPS = "https://gemini.google.com/spark/apps";
-// Where ChatGPT lists and manages custom plugins, checked September 2026.
-const CHATGPT_PLUGINS = "https://chatgpt.com/plugins";
-// Where Claude lists and manages connectors, checked September 2026.
-const CLAUDE_CONNECTORS = "https://claude.ai/customize/connectors";
+// Each app's own guide to adding a custom MCP server, checked October 2026. Their menus change
+// often and these pages follow them, so the steps below say only what is particular to this connector.
+const GUIDES = {
+  chatgpt: {name: "ChatGPT", adds: "a custom MCP server", doc: "https://help.openai.com/en/articles/12584461"},
+  claude: {name: "Claude", adds: "a custom connector", doc: "https://support.claude.com/en/articles/11175166"},
+  gemini: {name: "Gemini", adds: "a custom app", doc: "https://support.google.com/gemini/answer/17209137"},
+};
+const SIGN_IN = "When a sign-in window opens, choose this Google account and allow access.";
 
-// A step is text, optionally with a value to copy or a link to open.
+function connectGuide(name) {
+  // Muse adds a connector itself when given its address in a chat.
+  if (name === "muse") return {steps: [
+    "In a Muse chat, paste the address above and ask Muse to add it as a connector named Spliit.",
+    SIGN_IN,
+  ]};
+  const app = GUIDES[name];
+  return {steps: [
+    app ? {text: ["Follow ", {href: app.doc, label: `${app.name}'s guide`}, ` to add ${app.adds}. Name it Spliit.`]}
+      : "In your AI app, find where it adds a custom MCP server, connector or app. Name it Spliit.",
+    "When it asks for the server URL, paste the address above. If it asks how to sign in, choose OAuth, and leave any client ID and secret empty: this connector registers the app itself.",
+    SIGN_IN,
+  ], note: app ? null : "The app must reach this address over the internet and sign in with OAuth. Once connected, it's listed above by its web address."};
+}
+
+// A step is text, optionally with a value to copy or a link to open. Its text may hold
+// links within the sentence, as {href, label}.
 function guides() {
   const d = status?.diagnostics || {};
   return {
-    chatgpt: {title: "Connect ChatGPT", steps: [
-      {text: "Open Plugins in ChatGPT on the web.",
-        href: CHATGPT_PLUGINS, label: "Open ChatGPT Plugins"},
-      "Choose Add, then Create MCP App. Name it Spliit.",
-      {text: "Under Connection, keep Server URL and paste this address. Leave Authentication on OAuth.",
-        copy: d.mcp_endpoint},
-      "Tick I understand and want to continue, then choose Create.",
-      "When a sign-in window opens, choose this Google account and allow access.",
-      "On the plugin's page, choose Try in chat. Later, type @Spliit in any chat to use it.",
-    ], note: "No Create MCP App under Add? Turn on Developer mode in ChatGPT's settings first. ChatGPT renames its menus from time to time; look for the closest match."},
-    claude: {title: "Connect Claude", steps: [
-      {text: "Open Connectors in Claude on the web.",
-        href: CLAUDE_CONNECTORS, label: "Open Claude Connectors"},
-      "Choose +, then Add custom connector. Name it Spliit.",
-      {text: "Paste this address as the server URL, then continue.", copy: d.mcp_endpoint},
-      "Keep the detected settings: Sign in now, and Register automatically. Leave Request headers empty, then choose Add.",
-      "When a sign-in window opens, choose this Google account and allow access.",
-      "In a chat, make sure Spliit is turned on under + and Connectors, then ask about your expenses.",
-    ], note: "Claude renames its menus from time to time; look for the closest match."},
-    gemini: {title: "Connect Gemini", steps: [
-      {text: "Open Apps in Gemini Spark on the web.",
-        href: GEMINI_APPS, label: "Open Gemini Spark apps"},
-      {text: "Choose Add a custom app, and paste this address as the MCP server URL.", copy: d.mcp_endpoint},
-      "Leave Client ID and Client secret empty, then continue.",
-      "When a sign-in window opens, choose this Google account and allow access.",
-      "In a Spark task, type @ and choose Spliit, then ask about your expenses.",
-    ], note: "Gemini renames its menus from time to time; look for the closest match."},
     update: {title: `Update to ${latestRelease?.version}`, steps: [
       {text: "Open Cloud Shell with the latest code. Sign in with the Google account that owns this project if asked.",
         // The stable branch always holds the latest release, never unreleased work on main.
@@ -512,30 +504,46 @@ function guides() {
   };
 }
 
-function openGuide(name) {
-  const guide = guides()[name];
-  el("guide-title").textContent = guide.title;
+function guideBody(guide) {
   const list = document.createElement("ol");
   list.className = "steps";
   for (const step of guide.steps) {
     const {text, copy, href, label} = typeof step === "string" ? {text: step} : step;
     const item = document.createElement("li");
-    item.append(text);
+    for (const part of [text].flat())
+      item.append(typeof part === "string" ? part : external(part.href, part.label, "inline-link"));
     if (copy) item.append(copyField(copy));
     if (href) item.append(external(href, label, "pill small step-link"));
     list.append(item);
   }
+  if (!guide.note) return [list];
   const note = document.createElement("p");
   note.className = "panel-note";
   note.textContent = guide.note;
-  el("guide-body").replaceChildren(list, note);
+  return [list, note];
+}
+
+function openGuide(name) {
+  const guide = guides()[name];
+  el("guide-title").textContent = guide.title;
+  el("guide-body").replaceChildren(...guideBody(guide));
   el("guide").showModal();
 }
 
-for (const button of document.querySelectorAll("[data-guide]"))
-  button.onclick = () => openGuide(button.dataset.guide);
 // Clicking the dimmed backdrop closes the sheet.
 el("guide").onclick = event => { if (event.target === el("guide")) el("guide").close(); };
+
+// Choosing an app shows its steps below the chips; choosing it again hides them.
+function showConnectSteps(name) {
+  const chosen = name && document.querySelector(`[data-connect="${name}"]`)?.getAttribute("aria-pressed") !== "true";
+  for (const button of document.querySelectorAll("[data-connect]"))
+    button.setAttribute("aria-pressed", String(chosen && button.dataset.connect === name));
+  el("connect-steps").replaceChildren(...(chosen ? guideBody(connectGuide(name)) : []));
+  el("connect-steps").classList.toggle("hidden", !chosen);
+}
+
+for (const button of document.querySelectorAll("[data-connect]"))
+  button.onclick = () => showConnectSteps(button.dataset.connect);
 
 // ---------- Updates ----------
 
