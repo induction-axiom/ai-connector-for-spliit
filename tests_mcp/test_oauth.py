@@ -100,7 +100,7 @@ class OAuthTests(unittest.TestCase):
         r = self.mcp(t["access_token"])
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual({x["name"] for x in r.json()["result"]["tools"]},
-                         {"list_groups", "get_balances", "list_expenses", "get_expense", "list_categories",
+                         {"list_groups", "get_balances", "list_expenses", "get_expense", "list_activity", "list_categories",
                           "create_expense", "record_reimbursement", "update_expense", "delete_expense"})
         call = self.mcp(t["access_token"], "tools/call", {"name": "list_groups", "arguments": {}})
         self.assertEqual(call.status_code, 200, call.text)

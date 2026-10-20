@@ -88,6 +88,11 @@ class Spliit:
     def balances(self, group_id):
         return self.call("GET", "groups.balances.list", {"groupId": group_id})
 
+    def activities(self, group_id, offset, limit):
+        """The group's activity log, newest first. Each row has the expense it names while
+        that expense still exists, looked up in this group only."""
+        return self.call("GET", "groups.activities.list", {"groupId": group_id, "cursor": offset, "limit": limit})
+
     def exchange_rate(self, day, base, target):
         """How much 1 base is in target on day, as Spliit's own form asks for it, and the day
         the rate is from (the last working day before a weekend or a future date). Only the

@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from groups import sync_names
 from spliit import NO_DECIMALS, SpliitError
+from store import ADDING
 
 Amount = Annotated[str, Field(pattern=r"^\d{1,9}(\.\d{1,2})?$",
                               description='Decimal string in the group currency, such as "12.50"')]
@@ -40,6 +41,12 @@ NEXT_ACTIONS = {
 }
 # An expense with the same amount, added this recently, may be the same one.
 DUPLICATE_DAYS = 3
+# Spliit's activity types, as list_activity names them, and the logged tools that make each.
+ACTIVITIES = {"CREATE_EXPENSE": "added_expense", "UPDATE_EXPENSE": "changed_expense",
+              "DELETE_EXPENSE": "deleted_expense", "UPDATE_GROUP": "changed_group"}
+MADE_BY = {"CREATE_EXPENSE": ADDING, "UPDATE_EXPENSE": {"update_expense"}, "DELETE_EXPENSE": {"delete_expense"}}
+# A logged change is the activity on its expense, of its kind, Spliit noted this close to it.
+SAME_CHANGE_SECONDS = 60
 
 
 class Portion(BaseModel):
@@ -312,6 +319,37 @@ def register(server, spliit, groups, changes, who, owner_url, connector, securit
         return run(work)
 
     @server.tool(annotations=read, meta=security)
+    def list_activity(group: GroupName,
+                      limit: Annotated[int, Field(ge=1, le=100)] = 20,
+                      offset: Annotated[int, Field(ge=0)] = 0) -> dict[str, Any]:
+        """List what happened in a group, newest first: expenses added, changed and deleted,
+        and changes to the group's settings, by anyone, in Spliit or through this connector.
+
+        by is the member Spliit names, or null if it names none. Changes the owner's AI apps
+        made are in the owner's name, and by_ai_app marks them. expense_title is the title
+        when it happened; expense_id is null once the expense is deleted.
+        """
+        def work():
+            entry, live = load(group)
+            names = {p["id"]: p["name"] for p in live["participants"]}
+            answer = spliit.activities(entry["id"], offset, limit)
+            rows = answer["activities"]
+            logged = changes.changes_to([a["expenseId"] for a in rows if a.get("expenseId")])
+
+            def by_ai_app(activity):
+                at = datetime.fromisoformat(activity["time"]).timestamp()
+                return any(c["expense_id"] == activity.get("expenseId")
+                           and c["tool"] in MADE_BY.get(activity["activityType"], ())
+                           and abs(c["at"] - at) <= SAME_CHANGE_SECONDS for c in logged)
+
+            return {"activity": [{"at": a["time"], "action": ACTIVITIES.get(a["activityType"], a["activityType"]),
+                                  "by": names.get(a.get("participantId")), "expense_title": a.get("data"),
+                                  "expense_id": a["expenseId"] if (a.get("expense") or {}).get("groupId") == entry["id"] else None,
+                                  "by_ai_app": by_ai_app(a)} for a in rows],
+                    "next_offset": answer["nextCursor"] if answer["hasMore"] else None}
+        return run(work)
+
+    @server.tool(annotations=read, meta=security)
     def list_categories() -> dict[str, Any]:
         """List Spliit's expense categories; use an id as category_id."""
         return run(lambda: {"categories": spliit.categories()})
@@ -485,4 +523,5 @@ def register(server, spliit, groups, changes, who, owner_url, connector, securit
             return {"deleted": True, "previous": before}
         return run(work)
 
-    return {"list_groups": list_groups, "get_balances": get_balances, "list_expenses": list_expenses}
+    return {"list_groups": list_groups, "get_balances": get_balances, "list_expenses": list_expenses,
+            "list_activity": list_activity}
