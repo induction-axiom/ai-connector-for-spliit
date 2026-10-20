@@ -176,12 +176,18 @@ input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 4px co
 /* ---------- AI apps ---------- */
 .copy-field { display: flex; align-items: center; gap: 12px; margin: 0; padding: 8px 8px 8px 18px; border-radius: 18px; background: var(--bg); }
 .copy-field code { flex: 1; min-width: 0; overflow-wrap: anywhere; text-align: left; font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; user-select: all; }
-.platforms { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
-.platform { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: none; cursor: pointer; text-align: left; transition: border-color .2s, transform .2s; }
-.platform:hover { border-color: color-mix(in srgb, var(--blue) 45%, transparent); }
-.platform:active { transform: scale(.98); }
-.platform strong { font-size: 17px; font-weight: 650; }
-.platform-link { color: var(--blue); font-size: 14px; }
+/* One chip per app, filled like the address above it; the chosen one is solid and shows its steps below. */
+.choices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.choices button { height: 34px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--bg); color: var(--ink); cursor: pointer; font-size: 14px; font-weight: 500; letter-spacing: -.01em; transition: background-color .2s, color .2s; }
+.choices button:hover { background: var(--soft); }
+.choices button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.connect-steps { margin-top: 20px; }
+.connect-steps .steps { margin: 0; }
+.connect-steps .panel-note { margin: 12px 0 0; font-size: 14px; }
+/* A link inside a step's sentence, to another site. */
+.inline-link { text-decoration: none; white-space: nowrap; }
+.inline-link:hover { text-decoration: underline; }
+.inline-link::after { content: "\2009↗"; }
 .rows { margin: 0; padding: 0; list-style: none; }
 .subhead { margin: 40px 0 12px; font-size: 19px; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-top: 1px solid var(--line); }
@@ -250,7 +256,7 @@ input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 4px co
   .tabs { gap: 16px; }
   .hero { padding: 64px 0 48px; }
   .hero.compact { padding: 56px 0 36px; }
-  .tiles, .platforms, .panel.split { grid-template-columns: 1fr; }
+  .tiles, .panel.split { grid-template-columns: 1fr; }
   .project { max-width: 150px; }
   .resources { grid-template-columns: 1fr; }
   .sheet { padding: 28px 22px 22px; }

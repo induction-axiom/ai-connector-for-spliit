@@ -227,12 +227,15 @@ try {
     await save("ai-changes", {clip: {x: 0, y: headingBox.y - 18, width: WIDTH,
       height: Math.ceil(changesBox.y + changesBox.height + 24 - (headingBox.y - 18))}});
 
-    await page.locator('[data-guide="chatgpt"]').click();
-    await expect(page.locator("#guide")).toBeVisible();
-    await page.clock.runFor(500);
-    const guideBox = await page.locator("#guide").boundingBox();
-    await save("connect-chatgpt", {clip: {x: 0, y: guideBox.y - 48,
-      width: WIDTH, height: guideBox.height + 96}});
+    // The AI apps panel with ChatGPT's steps open, from its heading down.
+    await page.locator('[data-connect="chatgpt"]').click();
+    // Taller than the window, so measured in page coordinates and captured from the full page.
+    const [top, bottom] = await page.locator("#apps").evaluate(head => [
+      head.getBoundingClientRect().top + scrollY - 18,
+      head.nextElementSibling.getBoundingClientRect().bottom + scrollY + 24]);
+    // The sticky nav would otherwise be drawn over the middle of a full-page capture.
+    await save("connect-chatgpt", {fullPage: true, clip: {x: 0, y: top, width: WIDTH, height: Math.ceil(bottom - top)},
+      style: ".nav { position: static !important; }"});
     if (errors.length) throw new Error(errors.join("\n"));
 
     for (const [name, body] of Object.entries(examples)) {

@@ -409,7 +409,7 @@ def deploy(cfg):
           "--min-instances=0", "--max-instances=2", "--memory=256Mi", "--cpu=1",
           "--concurrency=20", "--timeout=300")
     _keep_recent_images(cfg, "cloud-run-source-deploy")
-    ui.line("Deployed. If the tools changed, choose Refresh tools for this app in ChatGPT.")
+    ui.line("Deployed. If the tools changed, refresh this connector's tools in your AI apps, or reconnect it.")
 
 
 def doctor(cfg):

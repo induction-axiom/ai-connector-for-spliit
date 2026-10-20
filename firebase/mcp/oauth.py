@@ -56,7 +56,7 @@ class Provider:
 
     def valid_redirect(self, uri):
         """Any https callback, or http to this computer. Any AI app may ask; the owner still signs in
-        and approves each one, and the consent page warns when it isn't Claude, ChatGPT or Gemini."""
+        and approves each one, and the consent page warns about an app it doesn't recognize."""
         if uri in self.config.test_redirects:
             return True
         if len(uri) > 512 or not uri.isprintable() or " " in uri:

@@ -173,10 +173,13 @@ test("AI changes name an app by its callback host, not the name it registered wi
   const dinner = {title: "Dinner", amount: "45.00", date: "2026-10-01", paid_by: "Jong", split_mode: "EVENLY",
     paid_for: [{name: "Jong", share: null}], category: "Dining", notes: null};
   const impostor = {client_id: "c2", name: "Claude", redirect_host: "evil.example"};
+  const muse = {client_id: "c3", name: "Hatch", redirect_host: "agent.meta.ai"};
   const state = await openDashboard(page, {groups: [TRIP], changes: [
     {at: Date.now() / 1000, app: impostor, tool: "create_expense", group: "Trip", before: null, after: dinner},
+    {at: Date.now() / 1000 - 60, app: muse, tool: "create_expense", group: "Trip", before: null, after: dinner},
   ]});
   await expect(page.locator("#changes-list li").nth(0)).toContainText("evil.example added Dinner");
+  await expect(page.locator("#changes-list li").nth(1)).toContainText("Muse added Dinner");
   expect(state.errors).toEqual([]);
 });
 
@@ -211,17 +214,25 @@ test("AI changes show ten at a time, then older ones on request", async ({page})
   expect(state.errors).toEqual([]);
 });
 
-test("the ChatGPT guide links to Plugins and offers the address to paste", async ({page}) => {
+test("choosing an app shows only its steps, with a link to its own guide", async ({page}) => {
   const state = await openDashboard(page, {groups: [TRIP]});
   await expect(page.locator("#mcp-url")).toHaveText(BASE + "/mcp");
-  await page.evaluate(() => document.querySelector('[data-guide="chatgpt"]').click());
-  const guide = page.locator("#guide");
-  await expect(guide).toBeVisible();
-  await expect(guide).toContainText("Name it Spliit");
-  await expect(guide).toContainText(BASE + "/mcp");
-  const links = await guide.locator("a.step-link").evaluateAll(
+  const steps = page.locator("#connect-steps");
+  await expect(steps).toBeHidden();
+  await expect(page.locator("[data-connect]")).toHaveText(["ChatGPT", "Claude", "Gemini", "Muse", "Another app"]);
+  await page.locator('[data-connect="chatgpt"]').click();
+  await expect(steps).toBeVisible();
+  await expect(steps).toContainText("Name it Spliit");
+  const links = await steps.locator("a").evaluateAll(
     anchors => anchors.map(a => [a.textContent, a.href, a.target]));
-  expect(links).toContainEqual(["Open ChatGPT Plugins", "https://chatgpt.com/plugins", "_blank"]);
+  expect(links).toEqual([["ChatGPT's guide", "https://help.openai.com/en/articles/12584461", "_blank"]]);
+  await page.locator('[data-connect="muse"]').click();
+  await expect(page.locator('[data-connect][aria-pressed="true"]')).toHaveText(["Muse"]);
+  await expect(steps).not.toContainText("ChatGPT");
+  await expect(steps).toContainText("paste the address above and ask Muse to add it");
+  await page.locator('[data-connect="muse"]').click();
+  await expect(steps).toBeHidden();
+  await expect(page.locator('[data-connect][aria-pressed="true"]')).toHaveCount(0);
   expect(state.errors).toEqual([]);
 });
 

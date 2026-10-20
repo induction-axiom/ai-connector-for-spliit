@@ -23,10 +23,10 @@ try {
   csrf = view.csrf;
   const host = new URL(view.redirect_uri).hostname;
   const known = {"oauth-redirect.googleusercontent.com": "Gemini", "chatgpt.com": "ChatGPT",
-    "claude.ai": "Claude", "claude.com": "Claude"}[host];
+    "claude.ai": "Claude", "claude.com": "Claude", "agent.meta.ai": "Muse"}[host];
   el("app-name").textContent = known || host;
   if (!known) {
-    el("unfamiliar").textContent = "This isn't Claude, ChatGPT or Gemini. Only allow it if you just added " +
+    el("unfamiliar").textContent = "This connector doesn't recognize this app. Only allow it if you just added " +
       "this connector to the app at " + host + " yourself.";
     el("unfamiliar").classList.remove("hidden");
   }

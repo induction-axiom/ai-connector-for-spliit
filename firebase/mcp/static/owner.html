@@ -92,24 +92,21 @@
         <h2>AI apps</h2>
       </div>
       <div class="panel">
-        <p class="panel-note">Add this address to an AI app. It asks you to sign in with this Google account, then reads and records expenses in the groups above.</p>
+        <ul id="apps-list" class="rows"><li class="row muted">Loading…</li></ul>
+        <h3 class="subhead">How to connect</h3>
+        <p class="panel-note">Add this address to any AI app that supports MCP. It asks you to sign in with this Google account, then reads and records expenses in the groups above.</p>
         <div class="copy-field">
           <code id="mcp-url">—</code>
           <button id="copy-url" class="pill small" type="button">Copy</button>
         </div>
-        <div class="platforms">
-          <button class="platform" type="button" data-guide="gemini">
-            <strong>Gemini</strong><span class="chip success">Supported</span><span class="platform-link">How to connect ›</span>
-          </button>
-          <button class="platform" type="button" data-guide="claude">
-            <strong>Claude</strong><span class="chip success">Supported</span><span class="platform-link">How to connect ›</span>
-          </button>
-          <button class="platform" type="button" data-guide="chatgpt">
-            <strong>ChatGPT</strong><span class="chip success">Supported</span><span class="platform-link">How to connect ›</span>
-          </button>
+        <div class="choices" role="group" aria-label="Steps for your AI app">
+          <button type="button" data-connect="chatgpt" aria-pressed="false" aria-controls="connect-steps">ChatGPT</button>
+          <button type="button" data-connect="claude" aria-pressed="false" aria-controls="connect-steps">Claude</button>
+          <button type="button" data-connect="gemini" aria-pressed="false" aria-controls="connect-steps">Gemini</button>
+          <button type="button" data-connect="muse" aria-pressed="false" aria-controls="connect-steps">Muse</button>
+          <button type="button" data-connect="other" aria-pressed="false" aria-controls="connect-steps">Another app</button>
         </div>
-        <h3 class="subhead">Connected now</h3>
-        <ul id="apps-list" class="rows"><li class="row muted">Loading…</li></ul>
+        <div id="connect-steps" class="connect-steps hidden" aria-live="polite"></div>
       </div>
 
       <div class="section-head">
@@ -153,6 +150,7 @@
             <button type="button" data-preview="list_groups" aria-pressed="true">list_groups</button>
             <button type="button" data-preview="get_balances" aria-pressed="false">get_balances</button>
             <button type="button" data-preview="list_expenses" aria-pressed="false">list_expenses</button>
+            <button type="button" data-preview="list_activity" aria-pressed="false">list_activity</button>
           </div>
         </div>
         <pre id="preview-output" class="code">Loading…</pre>
