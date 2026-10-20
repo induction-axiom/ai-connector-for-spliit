@@ -1,8 +1,8 @@
 # Private AI connector for Spliit
 
-Ask Gemini, Claude, ChatGPT or any other MCP app about your shared expenses in
-[Spliit](https://spliit.app), and tell it about new ones, from a private
-connector that runs in your own Firebase project.
+Ask your AI app about your shared expenses in [Spliit](https://spliit.app),
+and tell it about new ones, from a private connector that runs in your own
+Firebase project. Any AI app that supports MCP connectors can use it.
 
 Just paid? Dictate a message to your AI app on your phone, and let it record
 the shared expense in Spliit:
@@ -19,10 +19,10 @@ screenshots show the actual interface.
   project, with their own group links. Your data goes from Spliit to your
   project to the AI app you connect, and nowhere else: there is no shared
   server, and the developer never sees it.
-- **Reads and records.** The AI can read your groups' members, balances and
-  expenses, and add expenses, record reimbursements and change expenses. It
-  can delete only the expenses it added, and can't change groups and members.
-  Every change it makes is kept with what the expense was before.
+- **Reads and records.** The AI can read your groups' members, balances,
+  expenses and activity, and add expenses, record reimbursements and change
+  expenses. It can delete only the expenses it added, and can't change groups
+  and members. Every change it makes is kept with what the expense was before.
 - **One page to manage it.** The dashboard holds your group links, shows
   whether Spliit is answering, lists the AI apps you've connected, and lists
   every change they made.
@@ -75,11 +75,13 @@ project's Secret Manager, and your AI apps never see it.
 
 ### 4. Connect your AI app
 
-In the dashboard: **AI apps** → your app → **How to connect**.
+In the dashboard, under **AI apps** → **How to connect**, copy the address and
+choose your app to see what to do, with a link to the app's own guide where
+it has one. **Another app** covers any other app that supports MCP.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/connect-chatgpt-dark.png">
-  <img alt="The dashboard's ChatGPT connection guide, with step-by-step instructions and an example MCP address to copy" src="docs/images/connect-chatgpt-light.png" width="680">
+  <img alt="The dashboard's AI apps panel: the connected apps, an example MCP address to copy, a choice of app, and the steps for ChatGPT with a link to its guide" src="docs/images/connect-chatgpt-light.png" width="680">
 </picture>
 
 When the AI app sends you to approve the connection, only allow it if you
@@ -119,10 +121,12 @@ amounts when it was changed:
   <img alt="Dashboard AI change log: a repayment, a dinner corrected from 84.60 to 90.00, a ramen expense retaining its original JPY amount, and the original dinner entry" src="docs/images/ai-changes-light.png" width="680">
 </picture>
 
-The AI gets five read tools (`list_groups`, `get_balances`, `list_expenses`,
-`get_expense`, `list_categories`) and four that record (`create_expense`,
-`record_reimbursement`, `update_expense`, `delete_expense`). It names groups
-and members, and never sees a group's link or ID. What it records, everyone
+The AI gets six read tools (`list_groups`, `get_balances`, `list_expenses`,
+`get_expense`, `list_activity`, `list_categories`) and four that record
+(`create_expense`, `record_reimbursement`, `update_expense`, `delete_expense`).
+`list_activity` shows who added, changed or deleted what, as Spliit's own
+Activity page does, and marks what your AI apps did. The AI names groups and
+members, and never sees a group's link or ID. What it records, everyone
 in the group sees, just as if you had entered it in Spliit. Before adding an
 expense, the connector looks for one with the same amount added in the last
 three days, and asks you to confirm if it finds one. An expense paid in another
