@@ -11,9 +11,6 @@ Just paid? Tell your AI app, and let it record the shared expense in Spliit:
   <img alt="Simulated example: asked to split a $84.60 dinner with Alex and Sam, the AI adds it to the Trip group in Spliit, at $28.20 each" src="docs/images/example-record-light.png" width="680">
 </picture>
 
-All images use made-up data. The examples are illustrations, not any AI
-app's screen; the dashboard screenshots show the actual interface.
-
 - **Yours alone.** Each person deploys their own copy into their own Firebase
   project, with their own group links. Your data goes from Spliit to your
   project to the AI app you connect, and nowhere else: there is no shared
