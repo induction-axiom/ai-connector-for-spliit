@@ -366,6 +366,14 @@ class DashboardTests(Harness):
         self.assertEqual((down["spliit"]["state"], down["last_failure"]["code"]),
                          ("spliit_unavailable", "spliit_unavailable"))
 
+    def test_owner_login_required(self):
+        for path in ("/owner/status", "/owner/groups/lookup", "/owner/preview"):
+            r = self.post(path, headers={"Origin": BASE, "Authorization": "Bearer stranger-login"})
+            self.assertEqual((r.status_code, r.json()), (403, {"error": "not_owner"}), path)
+            # The owner's own sign-in, grown too old, is asked to sign in again: not called a stranger.
+            r = self.post(path, headers={"Origin": BASE, "Authorization": "Bearer synthetic-stale-login"})
+            self.assertEqual((r.status_code, r.json()), (403, {"error": "owner_login_required"}), path)
+
     def test_changes_come_ten_at_a_time(self):
         for at in range(1, 13):
             self.store.add_change({"at": at, "app": {}, "tool": "create_expense", "group": "Trip",

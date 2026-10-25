@@ -40,8 +40,9 @@ function status(state) {
 }
 
 // Serve the dashboard; each /owner/groups/add waits until the test settles it.
+// stale: the owner's sign-in is older than the server accepts.
 async function openDashboard(page, {groups = [], changes = [], spliit = "connected", lastFailure = null,
-    email = OWNER} = {}) {
+    email = OWNER, stale = false} = {}) {
   const state = {groups, changes, spliit, lastFailure, adds: [], removed: [], errors: []};
   page.on("pageerror", error => state.errors.push(error.message));
   await page.route("**/*", async route => {
@@ -59,9 +60,9 @@ async function openDashboard(page, {groups = [], changes = [], spliit = "connect
         body: readFileSync(new URL(name, STATIC))});
     }
     if (url.pathname === "/firebase-config") return json({authDomain: "example.test"});
-    if (url.pathname === "/owner/status" && email !== OWNER) return new Promise(settle => {
+    if (url.pathname === "/owner/status" && (email !== OWNER || stale)) return new Promise(settle => {
       state.turnAway = () => route.fulfill({status: 403, contentType: "application/json",
-        body: JSON.stringify({error: "owner_login_required"})}).then(settle);
+        body: JSON.stringify({error: stale ? "owner_login_required" : "not_owner"})}).then(settle);
     });
     if (url.pathname === "/owner/status") return json(status(state));
     if (url.pathname === "/owner/changes") {
@@ -131,7 +132,7 @@ test("removing a group takes two clicks", async ({page}) => {
   expect(state.errors).toEqual([]);
 });
 
-test("Spliit's status shows only when something is wrong", async ({page}) => {
+test("a failure shows for a week, once Spliit answers again", async ({page}) => {
   const now = Date.now() / 1000;
   const old = {code: "spliit_unavailable", at: now - 8 * 86400};
   const state = await openDashboard(page, {groups: [TRIP], lastFailure: old});
@@ -141,11 +142,12 @@ test("Spliit's status shows only when something is wrong", async ({page}) => {
   state.lastFailure = {code: "spliit_unavailable", at: now - 3600};
   await page.reload();
   await expect(page.locator("#fact-last-error")).toHaveText("Spliit isn't answering, 1 hour ago");
-  await expect(page.locator("#fact-live-row")).toBeHidden();
 
+  // While Spliit doesn't answer, the page says so once, above.
   state.spliit = "spliit_unavailable";
   await page.reload();
-  await expect(page.locator("#fact-live")).toHaveText("Spliit isn't answering");
+  await expect(page.locator("#status-title")).toHaveText("Spliit isn't answering right now.");
+  await expect(page.locator("#spliit-facts")).toBeHidden();
   expect(state.errors).toEqual([]);
 });
 
@@ -246,6 +248,16 @@ test("another Google account is turned away before the dashboard shows", async (
   await expect(page.locator("#signin-message")).toHaveText(
     "someone@example.com doesn't own this deployment. Sign in with the account that does.");
   await expect(page.locator("#signin-message")).toHaveAttribute("data-tone", "danger");
+  await expect(page.locator("#signin")).toBeEnabled();
+  await expect(page.locator("#overview-view")).toBeHidden();
+  expect(state.errors).toEqual([]);
+});
+
+test("the owner's sign-in grown old asks to sign in again, not that they don't own it", async ({page}) => {
+  const state = await openDashboard(page, {stale: true});
+  await expect.poll(() => typeof state.turnAway).toBe("function");
+  await state.turnAway();
+  await expect(page.locator("#signin-message")).toHaveText("Your sign-in expired. Sign in again to continue.");
   await expect(page.locator("#signin")).toBeEnabled();
   await expect(page.locator("#overview-view")).toBeHidden();
   expect(state.errors).toEqual([]);

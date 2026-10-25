@@ -50,7 +50,7 @@
         <p class="status-pill"><span class="dot" aria-hidden="true"></span><span id="status-label">Checking</span></p>
         <h1 id="status-title">Checking your connector…</h1>
         <p id="status-summary" class="lede"></p>
-        <div class="actions">
+        <div id="hero-actions" class="actions">
           <button id="primary-action" class="pill" type="button" disabled>Check again</button>
         </div>
         <p id="message" class="note" role="status" aria-live="polite"></p>
@@ -79,12 +79,11 @@
           <button id="group-add" class="link-button" type="button">Add a group</button>
         </div>
       </div>
-      <div class="panel">
+      <div class="panel stack">
         <ul id="groups-list" class="rows"><li class="row muted">Loading…</li></ul>
-        <!-- Shown only when something is wrong -->
+        <!-- A recent failure, while Spliit answers again -->
         <dl id="spliit-facts" class="facts hidden">
-          <div id="fact-live-row"><dt>Spliit right now</dt><dd id="fact-live">—</dd></div>
-          <div id="fact-last-error-row"><dt>Last problem</dt><dd id="fact-last-error">—</dd></div>
+          <div><dt>Last problem</dt><dd id="fact-last-error">—</dd></div>
         </dl>
       </div>
 
@@ -117,21 +116,13 @@
         <ul id="changes-list" class="rows"><li class="row muted">Loading…</li></ul>
         <button id="changes-more" class="link-button hidden" type="button">Show older</button>
       </div>
-
-      <div class="section-head">
-        <h2>Your Firebase project</h2>
-      </div>
-      <div class="panel">
-        <p class="panel-note">Everything runs in your own project. Each link opens it in the Firebase or Google Cloud console.</p>
-        <ul id="resources" class="resources"></ul>
-      </div>
     </section>
 
-    <!-- Developer: see exactly what the AI sees -->
+    <!-- Developer: what's deployed, where it runs, and exactly what the AI sees -->
     <section id="developer-view" class="view hidden" data-view="developer">
       <div class="hero compact">
         <h1>What your AI sees.</h1>
-        <p class="lede">The exact output of your AI's read tools, for your first group. Viewing it reads Spliit and never changes anything.</p>
+        <p class="lede">Where your connector runs, and the exact output of your AI's read tools, for your first group. Viewing it reads Spliit and never changes anything.</p>
       </div>
 
       <div class="panel">
@@ -141,6 +132,12 @@
           <div><dt>Source code</dt><dd id="fact-source">—</dd></div>
           <div><dt>Spliit status code</dt><dd id="fact-state"><code>—</code></dd></div>
         </dl>
+      </div>
+
+      <div class="panel">
+        <h2>Your Firebase project</h2>
+        <p class="panel-note">Everything runs in your own project. Each link opens it in the Firebase or Google Cloud console.</p>
+        <ul id="resources" class="resources"></ul>
       </div>
 
       <div class="panel">

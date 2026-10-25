@@ -9,6 +9,8 @@ import httpx
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "firebase" / "mcp"))
 
+from oauth import ConsentError
+
 BASE = "https://connector.example"
 CALLBACK = "https://chatgpt.com/connector_platform_oauth_redirect"
 OWNER = {"uid": "synthetic-owner-id", "email": "owner@example.com"}
@@ -19,6 +21,8 @@ ME, ALEX, SAM = "p-jong", "p-alex", "p-sam"
 def owner_identity(token, max_age=None):
     if token == "synthetic-owner-login":
         return OWNER
+    if token == "synthetic-stale-login":  # the owner, signed in too long ago
+        raise ConsentError("owner_google_login_required")
     return {"uid": "stranger", "email": "stranger@example.com"}
 
 

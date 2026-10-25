@@ -9,6 +9,8 @@ let auth, user, status, groupFormOpen = false, busy = false;
 
 // ---------- Small helpers ----------
 
+// The server turned the sign-in away: its message is owner_login_required (too old or
+// invalid: sign in again) or not_owner (another Google account).
 class OwnerSessionExpired extends Error {}
 
 async function api(path, body = {}) {
@@ -16,7 +18,8 @@ async function api(path, body = {}) {
     headers: {"Authorization": "Bearer " + await user.getIdToken(),
       "Content-Type": "application/json"}, body: JSON.stringify(body)});
   const data = await response.json().catch(() => ({}));
-  if (response.status === 403 && data.error === "owner_login_required") throw new OwnerSessionExpired();
+  if (response.status === 403 && ["owner_login_required", "not_owner"].includes(data.error))
+    throw new OwnerSessionExpired(data.error);
   if (!response.ok && !data.result) throw new Error(data.error || "request_failed");
   return data;
 }
@@ -139,18 +142,14 @@ function renderStatus() {
   el("primary-action").textContent = state.action === "guide" ? "Connect an AI app" : "Check again";
   // With no group yet, the form itself is the one action on the page.
   const needsGroup = state.action === "group";
-  el("primary-action").classList.toggle("hidden", needsGroup);
+  el("hero-actions").classList.toggle("hidden", needsGroup);
   showGroupForm(needsGroup || groupFormOpen, !needsGroup);
   const groups = spliit.groups || [];
   el("groups-list").replaceChildren(...(groups.length ? groups.map(groupRow) : [emptyRow("No groups yet.")]));
-  // Only problems are shown: Spliit not answering now, or a failure in the last week.
-  const down = spliit.state && spliit.state !== "connected";
-  const recent = failure && Date.now() / 1000 - failure.at < PROBLEM_DAYS * 86400;
-  el("fact-live").textContent = SPLIIT_COPY[spliit.state] || spliit.state;
-  el("fact-live-row").classList.toggle("hidden", !down);
+  // A failure in the last week, once Spliit answers again; while it doesn't, the page says so above.
+  const recent = spliit.state === "connected" && failure && Date.now() / 1000 - failure.at < PROBLEM_DAYS * 86400;
   el("fact-last-error").textContent = recent ? `${SPLIIT_COPY[failure.code] || failure.code}, ${ago(failure.at)}` : "";
-  el("fact-last-error-row").classList.toggle("hidden", !recent);
-  el("spliit-facts").classList.toggle("hidden", !down && !recent);
+  el("spliit-facts").classList.toggle("hidden", !recent);
   el("apps-list").replaceChildren(...(apps.length ? apps.map(appRow) : [emptyRow("No apps are connected yet.")]));
   showChanges(status.changes || [], status.more_changes, false);
 
@@ -636,8 +635,9 @@ async function signedIn(value) {
     await loadStatus();
   } catch (error) {
     // The first request is also where a non-owner Google account is turned away.
-    if (error instanceof OwnerSessionExpired) return expireSession(
-      `${user.email} doesn't own this deployment. Sign in with the account that does.`, "danger");
+    if (error instanceof OwnerSessionExpired) return error.message === "not_owner"
+      ? expireSession(`${user.email} doesn't own this deployment. Sign in with the account that does.`, "danger")
+      : expireSession();
     say("message", "Your connector's status couldn't be loaded. Try reloading.", "danger");
   }
   say("signin-message", "");
