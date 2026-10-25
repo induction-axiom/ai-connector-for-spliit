@@ -4,16 +4,15 @@ Ask your AI app about your shared expenses in [Spliit](https://spliit.app),
 and tell it about new ones, from a private connector that runs in your own
 Firebase project. Any AI app that supports MCP connectors can use it.
 
-Just paid? Dictate a message to your AI app on your phone, and let it record
-the shared expense in Spliit:
+Just paid? Tell your AI app, and let it record the shared expense in Spliit:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/example-record-dark.png">
-  <img alt="Simulated phone conversation: the user dictates a dinner expense by voice, and the AI records 84.60 CAD in Spliit, split evenly with Alex and Sam at 28.20 CAD each" src="docs/images/example-record-light.png" width="680">
+  <img alt="Simulated example: asked to split a $84.60 dinner with Alex and Sam, the AI adds it to the Trip group in Spliit, at $28.20 each" src="docs/images/example-record-light.png" width="680">
 </picture>
 
-All images use made-up data. Conversations are illustrations; the dashboard
-screenshots show the actual interface.
+All images use made-up data. The examples are illustrations, not any AI
+app's screen; the dashboard screenshots show the actual interface.
 
 - **Yours alone.** Each person deploys their own copy into their own Firebase
   project, with their own group links. Your data goes from Spliit to your
@@ -88,11 +87,11 @@ When the AI app sends you to approve the connection, only allow it if you
 just chose Connect in that app yourself. Someone else can send you a link
 that looks the same.
 
-Then ask who owes whom, or record a repayment you've received:
+Then ask who owes whom:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/example-settle-dark.png">
-  <img alt="Simulated conversation: Spliit suggests two payments to settle Trip; after Alex repays Jamie 15 CAD, the AI records it and explains the remaining balance" src="docs/images/example-settle-light.png" width="680">
+  <img alt="Simulated example: asked how to settle up Trip, the AI answers with two payments, Alex pays Jamie $75 and Sam pays Jamie $105" src="docs/images/example-settle-light.png" width="680">
 </picture>
 
 ## Later

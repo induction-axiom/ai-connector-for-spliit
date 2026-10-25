@@ -1,13 +1,11 @@
 // README artwork: node tests_ui/screenshots.mjs
 // Uses the real dashboard with synthetic data and intercepted requests only.
-// The conversation illustrations are examples, not screenshots of any AI app.
+// The example conversations are illustrations, not screenshots of any AI app.
 import {readFileSync, mkdirSync} from "node:fs";
 import {chromium, expect} from "@playwright/test";
 
 const STATIC = new URL("../firebase/mcp/static/", import.meta.url);
 const OUTPUT = new URL("../docs/images/", import.meta.url);
-// Upstream iPhone 14 Pro frame, pinned with its MIT license in templates/.
-const DEVICE_CSS = readFileSync(new URL("templates/iphone-14-pro.css", import.meta.url), "utf8");
 const BASE = "https://owner.example";
 // Every image is this many CSS pixels wide, so the README shows them at one width and text size.
 const WIDTH = 1040;
@@ -87,121 +85,60 @@ async function dashboard(page) {
   return errors;
 }
 
-const conversationCSS = `
+// The pitch: one line on the left, one question and one answer on the right, read in a glance.
+const promoCSS = `
   :root { color-scheme: light; --bg:#f5f5f7; --surface:#fff; --ink:#1d1d1f;
-    --muted:#6e6e73; --line:#e8e8ed; --blue:#0071e3; --green:#1d8a3f; }
+    --muted:#6e6e73; --line:#e8e8ed; --blue:#0071e3; }
   @media(prefers-color-scheme:dark) { :root { color-scheme:dark; --bg:#000;
-    --surface:#1c1c1e; --ink:#f5f5f7; --muted:#a1a1a6; --line:#333336;
-    --blue:#0071e3; --green:#30d158; } }
+    --surface:#1c1c1e; --ink:#f5f5f7; --muted:#a1a1a6; --line:#333336; --blue:#0a84ff; } }
   * {box-sizing:border-box} body {margin:0; background:var(--bg); color:var(--ink);
-    font:17px/1.48 -apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;
-    -webkit-font-smoothing:antialiased} main {padding:38px; width:${WIDTH}px}
-  header {display:flex; align-items:center; justify-content:space-between; gap:18px; margin:0 6px 22px}
-  header strong {font-size:18px; letter-spacing:-.025em} .sample {font-size:13px;
-    background:var(--line); color:var(--muted); padding:4px 12px; border-radius:24px; white-space:nowrap}
-  .user {max-width:620px; margin:0 0 18px auto; padding:16px 20px; border-radius:24px 24px 6px 24px;
-    background:var(--blue); color:#fff} .answer {padding:24px 28px; margin-bottom:20px;
-    background:var(--surface); border-radius:24px} p {margin:0 0 14px} p:last-child {margin:0}
-  .tool {display:inline-block; font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
-    color:var(--muted); background:var(--line); padding:4px 8px; border-radius:8px; margin-bottom:14px}
-  h1 {font-size:28px; letter-spacing:-.035em; line-height:1.16; margin:0 0 16px}
-  .success {color:var(--green)} .muted {color:var(--muted)}
-  dl {margin:0 0 18px} dl div {display:flex; justify-content:space-between; padding:12px 0;
-    border-top:1px solid var(--line); gap:24px} dt {color:var(--muted)} dd {margin:0; font-weight:600}
-  .small {font-size:14px} .balance {width:100%; border-collapse:collapse; margin:6px 0 20px}
-  .balance td {padding:8px 0; border-top:1px solid var(--line)} .balance td:last-child {text-align:right; font-weight:600}
-  .transfers {margin:0 0 14px; padding:0; list-style:none} .transfers li {display:flex;
-    justify-content:space-between; padding:10px 0; border-top:1px solid var(--line)}
-  footer {margin:4px 6px 0; color:var(--muted); font-size:13px; line-height:1.5}
-  .mobile-example {padding:32px}
-  .mobile-example footer {text-align:center}
-  .mobile-layout {display:grid; grid-template-columns:420px 428px; gap:64px; align-items:center;
-    justify-content:center; margin:26px 0 28px}
-  .intro {text-align:left} .intro h1 {font-size:54px; line-height:1.05; margin:0}
-  .mobile-layout .device {filter:drop-shadow(0 18px 24px #0002)}
-  .device .phone {display:flex; flex-direction:column; background:var(--bg); overflow:hidden}
-  .phone-status {display:flex; align-items:center; justify-content:space-between; padding:17px 24px 8px;
-    min-height:54px; font-size:14px; font-weight:600}
-  .battery {width:24px; height:12px; border:1.5px solid var(--ink); border-radius:3px; padding:2px}
-  .battery::after {content:""; display:block; background:var(--ink); height:100%; border-radius:1px}
-  .phone-app {text-align:center; border-bottom:1px solid var(--line); padding:8px 18px 14px}
-  .phone-app strong {font-size:18px} .phone-app span {display:block; font-size:13px; color:var(--muted); margin-top:3px}
-  .phone-chat {padding:16px 16px 4px; font-size:17px; line-height:1.45}
-  .chat-date {text-align:center; font-size:12px; color:var(--muted); margin-bottom:16px}
-  .phone .user {margin-left:14px; padding:16px; margin-bottom:18px; border-radius:22px 22px 6px 22px}
-  .voice-label {display:flex; align-items:center; gap:7px; margin-bottom:12px; font-size:12px; font-weight:600}
-  .mic {width:18px; height:24px; flex:none} .wave {display:flex; align-items:center; gap:2px; height:24px; margin-left:auto}
-  .wave i {display:block; width:3px; border-radius:4px; background:currentColor}
-  .phone .answer {padding:18px; border-radius:22px; margin-bottom:16px}
-  .saved {display:flex; align-items:center; gap:7px; font-size:13px; font-weight:600; color:var(--green); margin-bottom:12px}
-  .saved::before {content:""; width:7px; height:7px; border-radius:50%; background:currentColor}
-  .phone .answer h1 {font-size:26px; margin-bottom:16px} .phone dl {font-size:15px; margin-bottom:16px}
-  .phone dl div {display:flex; padding:10px 0; gap:14px} .phone .small {font-size:13px}
-  .composer {display:flex; align-items:center; gap:12px; margin:auto 16px 18px; padding:10px 12px;
-    border:1px solid var(--line); border-radius:28px; background:var(--surface)}
-  .composer span {flex:1; font-size:14px; color:var(--muted)} .mic-button {display:flex; align-items:center;
-    justify-content:center; width:38px; height:38px; border-radius:50%; background:var(--blue); color:#fff}
-  .home-indicator {width:134px; height:5px; margin:0 auto 10px; border-radius:8px; background:var(--ink)}
+    font:17px/1.4 -apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif; -webkit-font-smoothing:antialiased}
+  main {position:relative; width:${WIDTH}px; padding:64px 64px 72px; display:grid;
+    grid-template-columns:1fr 420px; gap:56px; align-items:center}
+  .product {margin:0 0 14px; color:var(--muted); font-size:16px; font-weight:600}
+  h1 {margin:0; font-size:54px; line-height:1.04; letter-spacing:-.04em; font-weight:700}
+  .user {width:fit-content; max-width:340px; margin:0 0 14px auto; padding:13px 18px;
+    border-radius:22px 22px 6px 22px; background:var(--blue); color:#fff; font-size:18px}
+  .answer {padding:26px 28px; border-radius:24px; background:var(--surface)}
+  .figure {font-size:46px; line-height:1; font-weight:700; letter-spacing:-.035em; font-variant-numeric:tabular-nums}
+  .caption {margin-top:8px; color:var(--muted); font-size:17px}
+  .sample {position:absolute; right:64px; bottom:28px; margin:0; color:var(--muted); font-size:13px}
 `;
-const microphone = `<svg class="mic" viewBox="0 0 24 28" fill="none" stroke="currentColor" stroke-width="1.8"
-  stroke-linecap="round" aria-hidden="true"><rect x="8" y="2" width="8" height="15" rx="4"/>
-  <path d="M4 12v2a8 8 0 0 0 16 0v-2M12 22v4M8 26h8"/></svg>`;
-const voiceLabel = `<div class="voice-label">${microphone}<span>Voice input · transcribed</span>
-  <span class="wave" aria-hidden="true">${[8, 16, 22, 12, 18, 24, 10, 18, 12].map(height => `<i style="height:${height}px"></i>`).join("")}</span></div>`;
+// This connector's tiny visuals: a line saying where the expense went, and the payments that settle a group.
+const visualCSS = `
+  :root { --green:#1d8a3f; } @media(prefers-color-scheme:dark) { :root { --green:#30d158; } }
+  .saved {display:flex; align-items:center; gap:7px; margin-bottom:16px; color:var(--green); font-size:14px; font-weight:600}
+  .saved::before {content:""; width:7px; height:7px; border-radius:50%; background:currentColor}
+  .payments {margin:20px 0 0; padding:0; list-style:none}
+  .payments li {display:flex; justify-content:space-between; padding:12px 0; border-top:1px solid var(--line); font-size:17px}
+  .payments li:last-child {padding-bottom:0}
+  .payments strong {font-variant-numeric:tabular-nums}
+`;
 const examples = {
   "example-record": `
-    <header><strong>AI connector for Spliit</strong><span class="sample">Simulated example</span></header>
-    <div class="mobile-layout">
-      <div class="intro"><h1>Just paid?<br>Tell your AI.</h1></div>
-      <div class="device device-iphone-14-pro device-black">
-      <div class="device-frame"><div class="device-screen phone">
-      <div class="phone-status"><span>18:00</span><span class="battery"></span></div>
-      <div class="phone-app"><strong>Your AI app</strong><span>Connected to Spliit</span></div>
-      <div class="phone-chat">
-        <div class="chat-date">Sunday, October 4, 2026</div>
-        <div class="user">${voiceLabel}Dinner was eighty-four sixty Canadian.
-          Add it to Trip for today, split with Alex and Sam.</div>
-        <div class="answer">
-          <div class="saved">Saved in Spliit · Trip</div>
-          <h1>Dinner added.</h1>
-          <dl><div><dt>Paid by you</dt><dd>CAD 84.60</dd></div>
-            <div><dt>Split evenly</dt><dd>CAD 28.20 each</dd></div></dl>
-          <p>Shared with Alex and Sam.</p>
-          <p class="muted small">Everyone can see it in Spliit.</p>
-        </div>
+    <section><p class="product">AI connector for Spliit</p>
+      <h1>Just paid?<br>Tell your AI.</h1></section>
+    <section>
+      <div class="user">Dinner was $84.60. Split it with Alex and Sam.</div>
+      <div class="answer">
+        <div class="saved">Added to Spliit · Trip</div>
+        <div class="figure">$28.20 each</div>
+        <div class="caption">Dinner, $84.60, split three ways</div>
       </div>
-      <div class="composer"><span>Add another expense…</span><div class="mic-button">${microphone}</div></div>
-      <div class="home-indicator"></div>
-      </div></div>
-      <div class="device-stripe"></div><div class="device-header"></div>
-      <div class="device-sensors"></div><div class="device-btns"></div>
-      <div class="device-power"></div><div class="device-home"></div>
-      </div>
-    </div>
-    <footer>Illustration with made-up data. Voice input uses your AI app or phone keyboard; the connector records the expense in Spliit.</footer>`,
+    </section>
+    <p class="sample">Simulated example · made-up data</p>`,
   "example-settle": `
-    <header><strong>Who owes whom? Just ask.</strong><span class="sample">Simulated example</span></header>
-    <div class="user">Who owes whom in Trip, and how do we settle up?</div>
-    <div class="answer">
-      <div class="tool">get_balances · Trip · CAD</div>
-      <h1>Two payments settle the group.</h1>
-      <table class="balance"><tbody>
-        <tr><td>Jamie is owed</td><td class="success">CAD 180.00</td></tr>
-        <tr><td>Alex owes</td><td>CAD 75.00</td></tr>
-        <tr><td>Sam owes</td><td>CAD 105.00</td></tr>
-      </tbody></table>
-      <p><strong>Spliit’s suggested payments</strong></p>
-      <ul class="transfers"><li><span>Alex → Jamie</span><strong>CAD 75.00</strong></li>
-        <li><span>Sam → Jamie</span><strong>CAD 105.00</strong></li></ul>
-      <p class="muted small">These are amounts to pay each other, not money transfers made by the connector.</p>
-    </div>
-    <div class="user">Alex paid me back CAD 15 on Oct 4, 2026. Record it.</div>
-    <div class="answer">
-      <div class="tool">record_reimbursement · Trip</div>
-      <h1 class="success">Repayment recorded.</h1>
-      <p>Alex paid Jamie <strong>CAD 15.00</strong>. Alex now owes CAD 60.00; Sam still owes CAD 105.00.</p>
-    </div>
-    <footer>Illustration with made-up names and balances. This is a separate scenario from the expense example above.</footer>`,
+    <section><p class="product">AI connector for Spliit</p>
+      <h1>Who owes whom?<br>Just ask.</h1></section>
+    <section>
+      <div class="user">How do we settle up Trip?</div>
+      <div class="answer">
+        <div class="figure">2 payments</div>
+        <ul class="payments"><li><span>Alex → Jamie</span><strong>$75</strong></li>
+          <li><span>Sam → Jamie</span><strong>$105</strong></li></ul>
+      </div>
+    </section>
+    <p class="sample">Simulated example · made-up data</p>`,
 };
 
 mkdirSync(OUTPUT, {recursive: true});
@@ -239,21 +176,11 @@ try {
     if (errors.length) throw new Error(errors.join("\n"));
 
     for (const [name, body] of Object.entries(examples)) {
-      const mobile = name === "example-record";
       // A short viewport, so the full-page capture ends where the content does.
       await page.setViewportSize({width: WIDTH, height: 400});
       await page.setContent(`<!doctype html><html lang="en"><meta charset="utf-8">
-        <title>Spliit connector — simulated example</title><style>${mobile ? DEVICE_CSS : ""}\n${conversationCSS}</style><main class="${mobile ? "mobile-example" : ""}">${body}</main></html>`);
+        <title>Spliit connector — simulated example</title><style>${promoCSS}\n${visualCSS}</style><main>${body}</main></html>`);
       await page.evaluate(() => document.fonts.ready);
-      if (mobile) {
-        const layout = await page.locator(".phone").evaluate(phone => ({
-          fits: phone.scrollHeight <= phone.clientHeight,
-          chatBottom: phone.querySelector(".phone-chat").getBoundingClientRect().bottom,
-          composerTop: phone.querySelector(".composer").getBoundingClientRect().top,
-        }));
-        if (!layout.fits || layout.chatBottom > layout.composerTop)
-          throw new Error("The mobile conversation overflows the phone frame: " + JSON.stringify(layout));
-      }
       await save(name, {fullPage: true});
     }
     await context.close();
