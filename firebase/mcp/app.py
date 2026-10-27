@@ -7,6 +7,7 @@ from threading import Lock
 import time
 from urllib.parse import parse_qs, urlencode, urlsplit
 
+from ai_connector_core.oauth import ConsentError, Provider, key
 import anyio
 from mcp.server import MCPServer
 from mcp.server.auth.middleware.auth_context import get_access_token
@@ -18,7 +19,6 @@ from starlette.routing import Route
 
 from config import Config
 from groups import SecretGroups, sync_names
-from oauth import ConsentError, Provider, key
 from spliit import Spliit, SpliitError
 from store import FirestoreStore
 import tools

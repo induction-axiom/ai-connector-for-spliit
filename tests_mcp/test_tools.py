@@ -14,6 +14,8 @@ DAY = "2026-10-02"
 
 class Harness(unittest.TestCase):
     """Reuses the OAuth test setup: a real consent, then tool calls over /mcp."""
+    make_store = test_oauth.OAuthTests.make_store
+    make_app = test_oauth.OAuthTests.make_app
     setUp = test_oauth.OAuthTests.setUp
     register = test_oauth.OAuthTests.register
     begin = test_oauth.OAuthTests.begin

@@ -9,7 +9,7 @@ import httpx
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "firebase" / "mcp"))
 
-from oauth import ConsentError
+from ai_connector_core.oauth import ConsentError
 
 BASE = "https://connector.example"
 CALLBACK = "https://chatgpt.com/connector_platform_oauth_redirect"
