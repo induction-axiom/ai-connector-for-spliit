@@ -5,14 +5,19 @@ Spliit's when the group is renamed there, the group ID from its link (the only c
 this service's account can read or change the secret. It is read on every call, so a
 change in the dashboard takes effect at once.
 """
+from functools import cached_property
 import json
 
 
 class SecretGroups:
     def __init__(self, project, secret_id):
-        from google.cloud import secretmanager
-        self.client = secretmanager.SecretManagerServiceClient()
         self.parent = f"projects/{project}/secrets/{secret_id}"
+
+    @cached_property
+    def client(self):
+        # Made on first use: a cold start serving /token never loads Secret Manager.
+        from google.cloud import secretmanager
+        return secretmanager.SecretManagerServiceClient()
 
     def get(self):
         from google.api_core.exceptions import NotFound
